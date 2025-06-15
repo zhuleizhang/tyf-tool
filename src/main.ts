@@ -37,7 +37,8 @@ function createWindow() {
 		},
 	});
 
-	mainWindow.loadFile(path.join(__dirname, '../index.html'));
+	// 修改为正确的相对路径
+	mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
 	if (process.env.NODE_ENV === 'development') {
 		mainWindow.webContents.openDevTools();
