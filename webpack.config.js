@@ -3,7 +3,7 @@ const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
 	mode: 'development',
-	entry: './src/renderer.tsx',
+	entry: './src/App.tsx',
 	target: 'electron-renderer',
 	module: {
 		rules: [
@@ -34,7 +34,7 @@ module.exports = {
 		extensions: ['.tsx', '.ts', '.js'],
 	},
 	output: {
-		filename: 'renderer.js',
+		filename: 'App.js',
 		path: path.resolve(__dirname, 'dist'),
 		libraryTarget: 'window',
 		library: 'App',

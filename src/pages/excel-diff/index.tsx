@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ipcRenderer } from 'electron';
-import { createRoot } from 'react-dom/client';
 import {
 	Layout,
 	Button,
@@ -21,15 +20,14 @@ import {
 	UploadOutlined,
 	SearchOutlined,
 	ExportOutlined,
-	FileExcelOutlined,
 	ReloadOutlined, // 导入刷新图标
 } from '@ant-design/icons';
 import 'antd/dist/reset.css';
 
 const FormItemWidth = '200px';
 
-const { Header, Content, Footer } = Layout;
-const { Title, Text, Paragraph } = Typography;
+const { Content } = Layout;
+const { Paragraph } = Typography;
 const { Option } = Select;
 const { Item } = Form;
 
@@ -49,7 +47,7 @@ interface AnalysisResult {
 	}[];
 }
 
-const App: React.FC = () => {
+const ExcelDiff: React.FC = () => {
 	const [filePath, setFilePath] = useState<string>('');
 	const [excelData, setExcelData] = useState<ExcelData[]>([]);
 	const [groupColumn, setGroupColumn] = useState<string>('');
@@ -281,294 +279,235 @@ const App: React.FC = () => {
 	}, [results]);
 
 	return (
-		<Layout className="layout" style={{ minHeight: '100vh' }}>
-			<Header
-				style={{
-					background: '#fff',
-					padding: '0 20px',
-					boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-				}}
+		<Spin spinning={loading} tip="处理中...">
+			<Card
+				title="文件选择"
+				bordered={true}
+				style={{ marginBottom: '24px' }}
+				actions={[
+					<Space key="file-actions" size="small">
+						<Button
+							type="primary"
+							icon={<UploadOutlined />}
+							onClick={handleFileSelect}
+						>
+							选择Excel文件
+						</Button>
+						{/* 添加刷新按钮 */}
+						<Button
+							icon={<ReloadOutlined />}
+							onClick={handleRefreshData}
+							disabled={!filePath || loading}
+						>
+							刷新数据
+						</Button>
+					</Space>,
+				]}
 			>
-				<div
-					style={{
-						display: 'flex',
-						alignItems: 'center',
-						height: '100%',
-					}}
-				>
-					<FileExcelOutlined
-						style={{
-							fontSize: '24px',
-							marginRight: '10px',
-							color: '#1890ff',
+				{filePath ? (
+					<Paragraph
+						ellipsis={{
+							rows: 1,
+							expandable: true,
+							symbol: '查看完整路径',
 						}}
+					>
+						当前文件: {filePath}
+					</Paragraph>
+				) : (
+					<Alert
+						message="请选择Excel文件进行分析"
+						type="info"
+						showIcon
 					/>
-					<Title level={3} style={{ margin: 0 }}>
-						Excel异常数据分析工具
-					</Title>
-				</div>
-			</Header>
+				)}
+			</Card>
 
-			<Content style={{ padding: '24px' }}>
-				<Spin spinning={loading} tip="处理中...">
-					<Card
-						title="文件选择"
-						bordered={true}
-						style={{ marginBottom: '24px' }}
-						actions={[
-							<Space key="file-actions" size="small">
+			{excelData.length > 0 && (
+				<Card
+					title="分析配置"
+					bordered={true}
+					style={{ marginBottom: '24px' }}
+				>
+					<Form layout="vertical" initialValues={{ startRow: 1 }}>
+						<Space
+							direction="vertical"
+							size="large"
+							style={{ width: '100%' }}
+						>
+							<Item
+								label="选择工作表"
+								name="sheets"
+								rules={[
+									{
+										required: true,
+										message: '请选择工作表',
+									},
+								]}
+							>
+								<Select
+									mode="multiple"
+									placeholder="请选择工作表"
+									style={{ width: '100%' }}
+									value={selectedSheets}
+									onChange={(values) =>
+										setSelectedSheets(values as string[])
+									}
+								>
+									{excelData.map((sheet) => (
+										<Option
+											key={sheet.name}
+											value={sheet.name}
+										>
+											{sheet.name}
+										</Option>
+									))}
+								</Select>
+							</Item>
+
+							<Space
+								direction="horizontal"
+								size="middle"
+								wrap
+								style={{ width: '100%' }}
+							>
+								<Item
+									label="起始行"
+									name="startRow"
+									style={{ minWidth: FormItemWidth }}
+								>
+									<InputNumber
+										min={1}
+										value={startRow}
+										onChange={(value) =>
+											setStartRow(value || 1)
+										}
+										style={{ width: '100%' }}
+									/>
+								</Item>
+
+								<Item
+									label="分组列"
+									name="groupColumn"
+									style={{ minWidth: FormItemWidth }}
+									rules={[
+										{
+											required: true,
+											message: '请选择分组列',
+										},
+									]}
+								>
+									<Select
+										placeholder="请选择分组列"
+										style={{ width: '100%' }}
+										value={groupColumn}
+										onChange={(value) =>
+											setGroupColumn(value as string)
+										}
+									>
+										{columnOptions.map((option) => (
+											<Option
+												key={option.value}
+												value={option.value}
+											>
+												{option.label}
+											</Option>
+										))}
+									</Select>
+								</Item>
+
+								<Item
+									label="检查列"
+									name="checkColumn"
+									style={{ minWidth: FormItemWidth }}
+									rules={[
+										{
+											required: true,
+											message: '请选择至少一个检查列',
+										},
+									]}
+								>
+									{/* 修改为支持多选 */}
+									<Select
+										mode="multiple"
+										placeholder="请选择检查列"
+										style={{ width: '100%' }}
+										value={checkColumns}
+										onChange={(value) =>
+											setCheckColumns(value as string[])
+										}
+									>
+										{columnOptions.map((option) => (
+											<Option
+												key={option.value}
+												value={option.value}
+											>
+												{option.label}
+											</Option>
+										))}
+									</Select>
+								</Item>
+
 								<Button
 									type="primary"
-									icon={<UploadOutlined />}
-									onClick={handleFileSelect}
-								>
-									选择Excel文件
-								</Button>
-								{/* 添加刷新按钮 */}
-								<Button
-									icon={<ReloadOutlined />}
-									onClick={handleRefreshData}
-									disabled={!filePath || loading}
-								>
-									刷新数据
-								</Button>
-							</Space>,
-						]}
-					>
-						{filePath ? (
-							<Paragraph
-								ellipsis={{
-									rows: 1,
-									expandable: true,
-									symbol: '查看完整路径',
-								}}
-							>
-								当前文件: {filePath}
-							</Paragraph>
-						) : (
-							<Alert
-								message="请选择Excel文件进行分析"
-								type="info"
-								showIcon
-							/>
-						)}
-					</Card>
-
-					{excelData.length > 0 && (
-						<Card
-							title="分析配置"
-							bordered={true}
-							style={{ marginBottom: '24px' }}
-						>
-							<Form
-								layout="vertical"
-								initialValues={{ startRow: 1 }}
-							>
-								<Space
-									direction="vertical"
-									size="large"
-									style={{ width: '100%' }}
-								>
-									<Item
-										label="选择工作表"
-										name="sheets"
-										rules={[
-											{
-												required: true,
-												message: '请选择工作表',
-											},
-										]}
-									>
-										<Select
-											mode="multiple"
-											placeholder="请选择工作表"
-											style={{ width: '100%' }}
-											value={selectedSheets}
-											onChange={(values) =>
-												setSelectedSheets(
-													values as string[]
-												)
-											}
-										>
-											{excelData.map((sheet) => (
-												<Option
-													key={sheet.name}
-													value={sheet.name}
-												>
-													{sheet.name}
-												</Option>
-											))}
-										</Select>
-									</Item>
-
-									<Space
-										direction="horizontal"
-										size="middle"
-										wrap
-										style={{ width: '100%' }}
-									>
-										<Item
-											label="起始行"
-											name="startRow"
-											style={{ minWidth: FormItemWidth }}
-										>
-											<InputNumber
-												min={1}
-												value={startRow}
-												onChange={(value) =>
-													setStartRow(value || 1)
-												}
-												style={{ width: '100%' }}
-											/>
-										</Item>
-
-										<Item
-											label="分组列"
-											name="groupColumn"
-											style={{ minWidth: FormItemWidth }}
-											rules={[
-												{
-													required: true,
-													message: '请选择分组列',
-												},
-											]}
-										>
-											<Select
-												placeholder="请选择分组列"
-												style={{ width: '100%' }}
-												value={groupColumn}
-												onChange={(value) =>
-													setGroupColumn(
-														value as string
-													)
-												}
-											>
-												{columnOptions.map((option) => (
-													<Option
-														key={option.value}
-														value={option.value}
-													>
-														{option.label}
-													</Option>
-												))}
-											</Select>
-										</Item>
-
-										<Item
-											label="检查列"
-											name="checkColumn"
-											style={{ minWidth: FormItemWidth }}
-											rules={[
-												{
-													required: true,
-													message:
-														'请选择至少一个检查列',
-												},
-											]}
-										>
-											{/* 修改为支持多选 */}
-											<Select
-												mode="multiple"
-												placeholder="请选择检查列"
-												style={{ width: '100%' }}
-												value={checkColumns}
-												onChange={(value) =>
-													setCheckColumns(
-														value as string[]
-													)
-												}
-											>
-												{columnOptions.map((option) => (
-													<Option
-														key={option.value}
-														value={option.value}
-													>
-														{option.label}
-													</Option>
-												))}
-											</Select>
-										</Item>
-
-										<Button
-											type="primary"
-											icon={<SearchOutlined />}
-											onClick={analyzeData}
-											style={{
-												height: '40px',
-												alignSelf: 'flex-end',
-											}}
-										>
-											开始分析
-										</Button>
-									</Space>
-								</Space>
-							</Form>
-						</Card>
-					)}
-
-					{analysisPerformed && (
-						<Card title="分析结果">
-							<div
-								style={{
-									marginBottom: '16px',
-									textAlign: 'right',
-								}}
-							>
-								<Button
-									icon={<ExportOutlined />}
-									onClick={exportResults}
-									disabled={results.length === 0}
-								>
-									导出结果
-								</Button>
-							</div>
-
-							{results.length > 0 ? (
-								<Table
-									columns={resultColumns}
-									dataSource={resultData}
-									pagination={{
-										showSizeChanger: true,
+									icon={<SearchOutlined />}
+									onClick={analyzeData}
+									style={{
+										height: '40px',
+										alignSelf: 'flex-end',
 									}}
-									size="middle"
-									rowClassName={(record, index) =>
-										index > 0 &&
-										record.value !== record.firstValue
-											? 'difference-row'
-											: ''
-									}
-								/>
-							) : (
-								<Alert
-									message="分析完成"
-									description="未发现差异数据"
-									type="success"
-									showIcon
-								/>
-							)}
-						</Card>
-					)}
-				</Spin>
-			</Content>
+								>
+									开始分析
+								</Button>
+							</Space>
+						</Space>
+					</Form>
+				</Card>
+			)}
 
-			<Footer style={{ textAlign: 'center' }}>
-				🍑 的工具箱 ©{new Date().getFullYear()} Created with Zhulei
-				Zhang
-			</Footer>
-		</Layout>
+			{analysisPerformed && (
+				<Card title="分析结果">
+					<div
+						style={{
+							marginBottom: '16px',
+							textAlign: 'right',
+						}}
+					>
+						<Button
+							icon={<ExportOutlined />}
+							onClick={exportResults}
+							disabled={results.length === 0}
+						>
+							导出结果
+						</Button>
+					</div>
+
+					{results.length > 0 ? (
+						<Table
+							columns={resultColumns}
+							dataSource={resultData}
+							pagination={{
+								showSizeChanger: true,
+							}}
+							size="middle"
+							rowClassName={(record, index) =>
+								index > 0 && record.value !== record.firstValue
+									? 'difference-row'
+									: ''
+							}
+						/>
+					) : (
+						<Alert
+							message="分析完成"
+							description="未发现差异数据"
+							type="success"
+							showIcon
+						/>
+					)}
+				</Card>
+			)}
+		</Spin>
 	);
 };
 
-const container = document.getElementById('root');
-const root = createRoot(container || document.body);
-root.render(<App />);
-
-window.addEventListener('error', (e) => {
-	console.error('全局错误捕获:', e.error);
-	message.error(`发生错误: ${e.error.message}`);
-});
-
-window.addEventListener('unhandledrejection', (e) => {
-	console.error('未处理的Promise拒绝:', e.reason);
-	message.error(`发生错误: ${e.reason.message}`);
-});
+export default ExcelDiff;
