@@ -26,6 +26,29 @@ interface OCRResult {
 	paragraphs: number;
 }
 
+// 获取图片尺寸的辅助函数
+const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
+	return new Promise((resolve, reject) => {
+		const img = new Image();
+		const url = URL.createObjectURL(file);
+		
+		img.onload = () => {
+			URL.revokeObjectURL(url);
+			resolve({
+				width: img.naturalWidth,
+				height: img.naturalHeight,
+			});
+		};
+		
+		img.onerror = () => {
+			URL.revokeObjectURL(url);
+			reject(new Error('无法加载图片以获取尺寸'));
+		};
+		
+		img.src = url;
+	});
+};
+
 // OCR缓存
 const ocrCache = new Map<string, { result: OCRResult; timestamp: number }>();
 const CACHE_EXPIRY = 30 * 60 * 1000; // 30分钟缓存
@@ -148,21 +171,24 @@ export const useImageOCR = (
 				updateImageText(imageId, image.text, 'processing');
 				setCurrentProcessing(image.file.name);
 
-				// todo 在这之前计算出区域，根据图片的宽高计算，计算出 left 和 top
-				// left = (图片的宽度 * 0.15)
-				// top = (图片的高度 * 0.70)
-				// width = (图片的宽度)
-				// height = (图片的高度 - top)
-				let top, left, width, height;
-				let rectangle: Rectangle | undefined = undefined;
-				if (top && left && width && height) {
-					rectangle = {
-						top,
-						left,
-						width,
-						height,
-					};
-				}
+				// 获取图片实际尺寸并计算识别区域
+				const imageDimensions = await getImageDimensions(image.file);
+				const imageWidth = imageDimensions.width;
+				const imageHeight = imageDimensions.height;
+				
+				// 根据公式计算识别区域
+				const left = Math.floor(imageWidth * 0.15);
+				const top = Math.floor(imageHeight * 0.70);
+				const width = imageWidth;
+				const height = imageHeight - top;
+				
+				// 构建矩形区域对象
+				const rectangle: Rectangle = {
+					left,
+					top,
+					width,
+					height,
+				};
 
 				// 将File对象转换为ArrayBuffer
 				const imageData = await image.file.arrayBuffer();
@@ -178,7 +204,7 @@ export const useImageOCR = (
 					preserve_interword_spaces: '1',
 					// 语言参数
 					language: options.language || 'chi_sim',
-					rectangle,
+					rectangles: [rectangle], // 传递矩形区域数组
 				};
 
 				// 调用主进程OCR服务，传递ArrayBuffer数据、文件名和OCR选项
