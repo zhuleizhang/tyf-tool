@@ -1,10 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Layout, Tabs, Typography, message } from 'antd';
-import {
-	FileExcelOutlined,
-	PictureOutlined
-} from '@ant-design/icons';
+import { FileExcelOutlined, PictureOutlined } from '@ant-design/icons';
 import 'antd/dist/reset.css';
 import TabPane from 'antd/es/tabs/TabPane';
 import ExcelDiff from './pages/excel-diff';
@@ -44,19 +41,11 @@ const App: React.FC = () => {
 			</Header>
 
 			<Content style={{ padding: '24px' }}>
-				<Tabs>
+				<Tabs destroyOnHidden>
 					<TabPane tab="Excel差异分析" key="1">
 						<ExcelDiff />
 					</TabPane>
-					<TabPane 
-						tab={
-							<span>
-								<PictureOutlined />
-								图片文字识别
-							</span>
-						} 
-						key="2"
-					>
+					<TabPane tab={'图片文字识别'} key="2">
 						<ImageOCR />
 					</TabPane>
 				</Tabs>
