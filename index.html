@@ -8,6 +8,16 @@
 
 <body>
     <div id="root"></div>
+    <script>
+        // 验证preload脚本是否正确加载
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.electronAPI) {
+                console.log('✅ preload脚本加载成功！window.electronAPI可用');
+            } else {
+                console.error('❌ preload脚本加载失败！window.electronAPI未定义');
+            }
+        });
+    </script>
     <script src="./main.js"></script>
     <script src="./App.js"></script>
 </body>
