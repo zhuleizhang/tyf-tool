@@ -624,6 +624,17 @@ ipcMain.handle('get-image-buffer', async (event, imageUrl: string, fileName: str
 // 处理OCR结果导出（支持图片嵌入）
 ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], imageBuffers: { [key: string]: ArrayBuffer }) => {
 	try {
+		// 输出调试信息
+		console.log('Export OCR Excel called with:', {
+			dataLength: data?.length || 0,
+			imagesLength: images?.length || 0,
+			imageBuffersKeys: imageBuffers ? Object.keys(imageBuffers).length : 0,
+			imageBufferSizes: imageBuffers ? Object.entries(imageBuffers).map(([id, buffer]) => ({
+				id,
+				size: buffer?.byteLength || 0
+			})) : []
+		});
+		
 		// 发送导出开始进度
 		event.sender.send('export-progress', { 
 			progress: 0, 
@@ -773,54 +784,103 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 					// 尝试嵌入图片
 					try {
 						let imageBuffer: Buffer | null = null;
+						let imageSource = '';
 						
-						// 首先尝试从传入的imageBuffers中获取
+						// 优先级1：从传入的imageBuffers中获取
 						if (imageBuffers && imageBuffers[image.id]) {
 							const arrayBuffer = imageBuffers[image.id];
-							if (arrayBuffer) {
+							if (arrayBuffer && arrayBuffer.byteLength > 0) {
 								imageBuffer = Buffer.from(arrayBuffer);
-								console.log(`Using provided buffer for image: ${image.file.name}`);
+								imageSource = 'provided buffer';
+								console.log(`Using provided buffer for image: ${image.file.name}, size: ${imageBuffer.length} bytes`);
+							} else {
+								console.warn(`Invalid buffer for image: ${image.file.name}`);
 							}
 						}
 						
-						// 如果没有找到缓冲区，尝试从文件路径读取
+						// 优先级2：从文件路径读取
 						if (!imageBuffer) {
-							if (image.file && image.file.path && fs.existsSync(image.file.path)) {
-								imageBuffer = fs.readFileSync(image.file.path);
-								console.log(`Read from file path: ${image.file.path}`);
-							} else if (typeof image.url === 'string' && fs.existsSync(image.url)) {
-								imageBuffer = fs.readFileSync(image.url);
-								console.log(`Read from URL path: ${image.url}`);
+							if (image.file && image.file.path && typeof image.file.path === 'string') {
+								try {
+									if (fs.existsSync(image.file.path)) {
+										imageBuffer = fs.readFileSync(image.file.path);
+										imageSource = 'file path';
+										console.log(`Read from file path: ${image.file.path}, size: ${imageBuffer.length} bytes`);
+									} else {
+										console.warn(`File path does not exist: ${image.file.path}`);
+									}
+								} catch (pathError) {
+									console.warn(`Error reading from file path ${image.file.path}:`, pathError);
+								}
+							}
+						}
+						
+						// 优先级3：从URL路径读取
+						if (!imageBuffer && typeof image.url === 'string' && !image.url.startsWith('blob:')) {
+							try {
+								if (fs.existsSync(image.url)) {
+									imageBuffer = fs.readFileSync(image.url);
+									imageSource = 'URL path';
+									console.log(`Read from URL path: ${image.url}, size: ${imageBuffer.length} bytes`);
+								} else {
+									console.warn(`URL path does not exist: ${image.url}`);
+								}
+							} catch (urlError) {
+								console.warn(`Error reading from URL path ${image.url}:`, urlError);
 							}
 						}
 
-						// 如果成功获取图片数据，添加到Excel
+						// 验证图片数据并嵌入Excel
 						if (imageBuffer && imageBuffer.length > 0) {
-							const imageId = workbook.addImage({
-								buffer: imageBuffer,
-								extension: getImageExtension(image.file.name)
-							});
+							try {
+								// 验证图片数据的有效性
+								const imageExtension = getImageExtension(image.file.name);
+								
+								const imageId = workbook.addImage({
+									buffer: imageBuffer,
+									extension: imageExtension
+								});
 
-							// 将图片添加到指定单元格
-							worksheet.addImage(imageId, {
-								tl: { col: 1, row: i + 1 }, // 图片预览列（第2列，从0开始计数）
-								ext: { width: 150, height: 100 },
-								editAs: 'oneCell'
-							});
-							
-							console.log(`Successfully embedded image: ${image.file.name}`);
+								// 将图片添加到指定单元格
+								worksheet.addImage(imageId, {
+									tl: { col: 1, row: i + 1 }, // 图片预览列（第2列，从0开始计数）
+									ext: { width: 150, height: 100 },
+									editAs: 'oneCell'
+								});
+								
+								console.log(`Successfully embedded image: ${image.file.name} (source: ${imageSource})`);
+							} catch (embedError) {
+								console.error(`Error embedding image ${image.file.name}:`, embedError);
+								// 在单元格中显示具体错误信息
+								const imageCell = worksheet.getCell(i + 2, 2);
+								imageCell.value = `嵌入失败: ${embedError instanceof Error ? embedError.message : '未知错误'}`;
+								imageCell.font = { italic: true, color: { argb: 'FF0000' } };
+							}
 						} else {
-							// 如果无法读取图片，在单元格中显示提示
-							const imageCell = worksheet.getCell(i + 2, 2); // 第i+2行，第2列
-							imageCell.value = '图片无法嵌入';
-							imageCell.font = { italic: true, color: { argb: '888888' } };
-							console.warn(`Cannot embed image: ${image.file.name}`);
+							// 详细的失败原因分析
+							let failureReason = '未知原因';
+							
+							if (!imageBuffers || !imageBuffers[image.id]) {
+								failureReason = '未提供图片数据';
+							} else if (imageBuffers[image.id].byteLength === 0) {
+								failureReason = '图片数据为空';
+							} else if (!image.file) {
+								failureReason = '文件对象无效';
+							} else if (!image.file.name) {
+								failureReason = '文件名无效';
+							}
+							
+							// 在单元格中显示具体失败原因
+							const imageCell = worksheet.getCell(i + 2, 2);
+							imageCell.value = `无法嵌入: ${failureReason}`;
+							imageCell.font = { italic: true, color: { argb: 'FF6600' } };
+							console.warn(`Cannot embed image ${image.file?.name || 'unknown'}: ${failureReason}`);
 						}
 					} catch (imageError) {
-						console.error(`Error embedding image ${image.file.name}:`, imageError);
+						console.error(`Error processing image ${image.file?.name || 'unknown'}:`, imageError);
 						// 在单元格中显示错误信息
 						const imageCell = worksheet.getCell(i + 2, 2);
-						imageCell.value = '图片处理失败';
+						imageCell.value = `处理失败: ${imageError instanceof Error ? imageError.message : '未知错误'}`;
 						imageCell.font = { italic: true, color: { argb: 'FF0000' } };
 					}
 					

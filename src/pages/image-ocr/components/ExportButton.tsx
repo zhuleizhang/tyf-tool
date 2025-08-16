@@ -2,6 +2,8 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Button, message, Modal, Progress, Typography } from 'antd';
 import { ExportOutlined, LoadingOutlined } from '@ant-design/icons';
 import type { ImageData } from '../index';
+import { collectImageData, validateImageData } from '../../../utils/imageDataCollector';
+import { exportDebugger } from '../../../utils/exportDebugger';
 
 const { Text } = Typography;
 
@@ -94,6 +96,9 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
     });
     
     try {
+      // 清空之前的调试日志
+      exportDebugger.clear();
+      
       // 准备导出数据，包含更多信息
       const exportData = imagesToExport.map((image, index) => ({
         序号: index + 1,
@@ -116,17 +121,49 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
 
       for (let i = 0; i < imagesToExport.length; i++) {
         const image = imagesToExport[i];
+        let collectedBuffer: ArrayBuffer | null = null;
+        let collectionMethod = 'unknown';
+        let errorMessage: string | undefined;
+        
         try {
-          // 从blob URL获取ArrayBuffer数据
-          if (image.url && image.url.startsWith('blob:')) {
-            const response = await fetch(image.url);
-            const arrayBuffer = await response.arrayBuffer();
-            imageBuffers.set(image.id, arrayBuffer);
-            console.log(`Collected buffer for image: ${image.file.name}, size: ${arrayBuffer.byteLength} bytes`);
+          console.log(`Processing image ${i + 1}/${imagesToExport.length}: ${image.file.name}`);
+          
+          // 使用新的图片数据收集工具
+          const result = await collectImageData(image.file, image.url);
+          
+          if (result.success && result.data) {
+            // 验证数据有效性
+            const validation = validateImageData(result.data, image.file.name);
+            
+            if (validation.valid) {
+              collectedBuffer = result.data;
+              collectionMethod = result.method || 'unknown';
+              imageBuffers.set(image.id, result.data);
+              console.log(`✅ Successfully collected buffer for: ${image.file.name}, size: ${result.data.byteLength} bytes, method: ${result.method}`);
+            } else {
+              errorMessage = validation.error;
+              console.error(`❌ Invalid image data for ${image.file.name}: ${validation.error}`);
+            }
+          } else {
+            errorMessage = result.error;
+            console.error(`❌ Failed to collect buffer for ${image.file.name}: ${result.error}`);
           }
+          
         } catch (error) {
-          console.warn(`Failed to collect buffer for image ${image.file.name}:`, error);
+          errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`❌ Error processing image ${image.file.name}:`, error);
         }
+        
+        // 记录调试信息
+        exportDebugger.logImageProcessing(
+          image.id,
+          image.file.name,
+          image.file,
+          image.url,
+          collectedBuffer,
+          collectionMethod,
+          errorMessage
+        );
         
         // 更新进度
         const progress = 5 + Math.round((i / imagesToExport.length) * 10);
@@ -158,6 +195,33 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
         imageBuffersObj[id] = buffer;
       });
 
+      // 生成并输出调试报告
+      const debugSummary = exportDebugger.getSummary();
+      console.log('=== 图片收集调试摘要 ===');
+      console.log(`总图片数: ${debugSummary.total}`);
+      console.log(`成功收集: ${debugSummary.successful}`);
+      console.log(`失败数量: ${debugSummary.failed}`);
+      console.log(`成功率: ${debugSummary.successRate.toFixed(1)}%`);
+      console.log('方法统计:', debugSummary.methodStats);
+      if (debugSummary.commonErrors.length > 0) {
+        console.log('常见错误:', debugSummary.commonErrors);
+      }
+      
+      // 如果有失败的图片，输出详细报告
+      if (debugSummary.failed > 0) {
+        console.log('详细调试报告:');
+        console.log(exportDebugger.generateReport());
+      }
+      
+      // 输出导出信息
+      console.log('Export info:', {
+        totalImages: imagesToExport.length,
+        buffersCollected: imageBuffers.size,
+        imageDataLength: imageData.length,
+        exportDataLength: exportData.length,
+        successRate: `${debugSummary.successRate.toFixed(1)}%`
+      });
+
       // 调用主进程导出Excel
       const result = await window.electronAPI?.exportOCRExcel?.(exportData, imageData, imageBuffersObj);
       
@@ -171,7 +235,10 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
       console.error('Export error:', error);
       setShowProgress(false);
       setIsExporting(false);
-      message.error('导出过程中发生错误');
+      
+      // 提供更详细的错误信息
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      message.error(`导出过程中发生错误: ${errorMessage}`);
     }
   };
 
