@@ -256,19 +256,17 @@ async function initOCRWorker() {
 	}
 }
 
-// 增强的图片预处理函数
-async function preprocessImage(imagePath: string): Promise<string> {
+// 增强的图片预处理函数（处理ArrayBuffer数据）
+async function preprocessImageData(imageData: ArrayBuffer, fileName: string): Promise<string> {
 	try {
-		// 检查文件是否存在
-		if (!fs.existsSync(imagePath)) {
-			throw new Error('图片文件不存在');
+		// 检查数据有效性
+		if (!imageData || imageData.byteLength === 0) {
+			throw new Error('图片数据为空');
 		}
 
-		// 获取文件信息
-		const stats = fs.statSync(imagePath);
-		const fileSizeInMB = stats.size / (1024 * 1024);
-		
 		// 文件大小检查
+		const fileSizeInMB = imageData.byteLength / (1024 * 1024);
+		
 		if (fileSizeInMB > 50) {
 			throw new Error(`图片文件过大 (${fileSizeInMB.toFixed(2)}MB)，请使用小于50MB的图片`);
 		}
@@ -278,65 +276,95 @@ async function preprocessImage(imagePath: string): Promise<string> {
 		}
 
 		// 检查文件格式
-		const ext = path.extname(imagePath).toLowerCase();
+		const ext = path.extname(fileName).toLowerCase();
 		const supportedFormats = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif'];
 		
 		if (!supportedFormats.includes(ext)) {
 			throw new Error(`不支持的图片格式: ${ext}`);
 		}
 
-		// 检查文件是否损坏（基本检查）
-		try {
-			const buffer = fs.readFileSync(imagePath);
-			if (buffer.length === 0) {
-				throw new Error('图片文件为空');
-			}
-		} catch (readError) {
-			throw new Error('图片文件损坏或无法读取');
+		// 创建临时文件
+		const tempDir = path.join(__dirname, 'temp');
+		if (!fs.existsSync(tempDir)) {
+			fs.mkdirSync(tempDir, { recursive: true });
+		}
+		
+		const tempFileName = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`;
+		const tempFilePath = path.join(tempDir, tempFileName);
+		
+		// 将ArrayBuffer写入临时文件
+		const buffer = Buffer.from(imageData);
+		fs.writeFileSync(tempFilePath, buffer);
+		
+		// 验证写入的文件
+		if (!fs.existsSync(tempFilePath)) {
+			throw new Error('创建临时图片文件失败');
+		}
+		
+		const stats = fs.statSync(tempFilePath);
+		if (stats.size === 0) {
+			throw new Error('临时图片文件为空');
 		}
 
-		// 对于大多数情况，直接返回原路径
-		// 未来可以在这里添加图片优化逻辑（如压缩、去噪等）
-		return imagePath;
+		console.log(`Created temp image file: ${tempFilePath} (${fileSizeInMB.toFixed(2)}MB)`);
+		return tempFilePath;
 	} catch (error) {
-		console.error('Error preprocessing image:', error);
+		console.error('Error preprocessing image data:', error);
 		throw error;
 	}
 }
 
+// 清理临时文件
+function cleanupTempFile(filePath: string) {
+	try {
+		if (fs.existsSync(filePath)) {
+			fs.unlinkSync(filePath);
+			console.log(`Cleaned up temp file: ${filePath}`);
+		}
+	} catch (error) {
+		console.error('Error cleaning up temp file:', error);
+	}
+}
+
 // 处理OCR识别（优化版本）
-ipcMain.handle('recognize-image', async (event, imagePath: string, options: any = {}) => {
+ipcMain.handle('recognize-image', async (event, imageData: ArrayBuffer, fileName: string, options: any = {}) => {
 	const startTime = Date.now();
-	console.log('OCR recognition requested for:', imagePath);
+	console.log('OCR recognition requested for:', fileName);
 	
 	const maxRetries = 3;
 	let lastError: Error | null = null;
 	let attempt = 0;
 
 	// 输入验证
-	if (!imagePath || typeof imagePath !== 'string') {
-		throw new Error('无效的图片路径');
+	if (!imageData || !(imageData instanceof ArrayBuffer)) {
+		throw new Error('无效的图片数据');
+	}
+	
+	if (!fileName || typeof fileName !== 'string') {
+		throw new Error('无效的文件名');
 	}
 
+	let tempFilePath: string | null = null;
+	
 	for (attempt = 1; attempt <= maxRetries; attempt++) {
 		try {
-			console.log(`OCR attempt ${attempt}/${maxRetries} for: ${path.basename(imagePath)}`);
+			console.log(`OCR attempt ${attempt}/${maxRetries} for: ${fileName}`);
 			
-			// 预处理图片（包含全面的验证）
-			const processedImagePath = await preprocessImage(imagePath);
+			// 预处理图片数据（创建临时文件）
+			tempFilePath = await preprocessImageData(imageData, fileName);
 			
 			// 初始化OCR工作器（延迟初始化）
 			const worker = await initOCRWorker();
 			
 			// 发送开始识别的进度更新
 			event.sender.send('ocr-progress', { 
-				imagePath, 
+				imagePath: fileName, 
 				progress: 10, 
 				status: 'starting' 
 			});
 
 			// 设置识别超时
-			const recognitionPromise = worker.recognize(processedImagePath, {
+			const recognitionPromise = worker.recognize(tempFilePath, {
 				rectangles: options.rectangles || undefined,
 				...options
 			});
@@ -355,7 +383,7 @@ ipcMain.handle('recognize-image', async (event, imagePath: string, options: any 
 
 			// 发送完成的进度更新
 			event.sender.send('ocr-progress', { 
-				imagePath, 
+				imagePath: fileName, 
 				progress: 100, 
 				status: 'completed' 
 			});
@@ -397,6 +425,12 @@ ipcMain.handle('recognize-image', async (event, imagePath: string, options: any 
 			// 记录使用时间
 			lastWorkerUsage = Date.now();
 
+			// 清理临时文件
+			if (tempFilePath) {
+				cleanupTempFile(tempFilePath);
+				tempFilePath = null;
+			}
+
 			return result;
 
 		} catch (error) {
@@ -407,11 +441,17 @@ ipcMain.handle('recognize-image', async (event, imagePath: string, options: any 
 			
 			// 发送错误的进度更新
 			event.sender.send('ocr-progress', { 
-				imagePath, 
+				imagePath: fileName, 
 				progress: 0, 
 				status: 'error',
 				error: errorMsg
 			});
+
+			// 清理当前尝试的临时文件
+			if (tempFilePath) {
+				cleanupTempFile(tempFilePath);
+				tempFilePath = null;
+			}
 
 			// 错误分类和处理策略
 			const isRetryableError = 
@@ -452,120 +492,17 @@ ipcMain.handle('recognize-image', async (event, imagePath: string, options: any 
 	const finalErrorMessage = `OCR识别失败 (${attempt}次尝试，耗时${totalTime}ms): ${lastError?.message || '未知错误'}`;
 	
 	console.error(finalErrorMessage);
+	
+	// 最终清理临时文件
+	if (tempFilePath) {
+		cleanupTempFile(tempFilePath);
+	}
+	
 	throw new Error(finalErrorMessage);
 });
 
-// 处理批量OCR识别
-ipcMain.handle('recognize-images-batch', async (event, imagePaths: string[], options: any = {}) => {
-	const results = [];
-	const total = imagePaths.length;
-	
-	try {
-		// 发送批量识别开始的进度更新
-		event.sender.send('batch-ocr-progress', { 
-			total, 
-			completed: 0, 
-			status: 'starting' 
-		});
-
-		for (let i = 0; i < imagePaths.length; i++) {
-			const imagePath = imagePaths[i];
-			
-			try {
-				// 发送当前图片的进度更新
-				event.sender.send('batch-ocr-progress', { 
-					total, 
-					completed: i, 
-					current: imagePath,
-					status: 'processing' 
-				});
-
-				// 直接调用OCR识别函数而不是通过IPC
-				const maxRetries = 3;
-				let lastError: Error | null = null;
-
-				for (let attempt = 1; attempt <= maxRetries; attempt++) {
-					try {
-						const processedImagePath = await preprocessImage(imagePath);
-						const worker = await initOCRWorker();
-						
-						const { data } = await worker.recognize(processedImagePath, {
-							rectangles: options.rectangles || undefined,
-						});
-
-						const cleanText = data.text
-							.replace(/\s+/g, ' ')
-							.replace(/^\s+|\s+$/g, '')
-							.replace(/\n\s*\n/g, '\n');
-
-						const result = {
-							text: cleanText,
-							confidence: data.confidence / 100,
-							words: data.words?.length || 0,
-							lines: data.lines?.length || 0,
-							paragraphs: data.paragraphs?.length || 0,
-							processingTime: Date.now()
-						};
-
-						results.push({
-							imagePath,
-							success: true,
-							result
-						});
-						break; // 成功则跳出重试循环
-
-					} catch (error) {
-						lastError = error as Error;
-						if (attempt < maxRetries) {
-							const delay = Math.pow(2, attempt) * 1000;
-							await new Promise(resolve => setTimeout(resolve, delay));
-						}
-					}
-				}
-
-				// 如果所有重试都失败了
-				if (lastError && !results.find(r => r.imagePath === imagePath && r.success)) {
-					results.push({
-						imagePath,
-						success: false,
-						error: lastError.message
-					});
-				}
-
-			} catch (error) {
-				console.error(`Failed to recognize image ${imagePath}:`, error);
-				results.push({
-					imagePath,
-					success: false,
-					error: (error as Error).message
-				});
-			}
-
-			// 添加小延迟避免资源过载
-			if (i < imagePaths.length - 1) {
-				await new Promise(resolve => setTimeout(resolve, 100));
-			}
-		}
-
-		// 发送批量识别完成的进度更新
-		event.sender.send('batch-ocr-progress', { 
-			total, 
-			completed: total, 
-			status: 'completed' 
-		});
-
-		return results;
-	} catch (error) {
-		console.error('Batch OCR error:', error);
-		event.sender.send('batch-ocr-progress', { 
-			total, 
-			completed: 0, 
-			status: 'error',
-			error: (error as Error).message 
-		});
-		throw error;
-	}
-});
+// 注意：批量OCR识别已通过渲染进程中的循环调用单张识别来实现
+// 这里保留这个处理器是为了向后兼容，但推荐使用渲染进程中的批量处理逻辑
 
 // 处理OCR结果导出
 ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[]) => {
@@ -887,15 +824,38 @@ async function cleanupOCRResources() {
 	}
 }
 
+// 清理临时文件夹
+function cleanupTempDirectory() {
+	try {
+		const tempDir = path.join(__dirname, 'temp');
+		if (fs.existsSync(tempDir)) {
+			const files = fs.readdirSync(tempDir);
+			files.forEach(file => {
+				const filePath = path.join(tempDir, file);
+				try {
+					fs.unlinkSync(filePath);
+				} catch (error) {
+					console.error(`Error deleting temp file ${filePath}:`, error);
+				}
+			});
+			console.log(`Cleaned up ${files.length} temporary files`);
+		}
+	} catch (error) {
+		console.error('Error cleaning up temp directory:', error);
+	}
+}
+
 // 应用退出时清理资源
 app.on('before-quit', async () => {
 	await cleanupOCRResources();
+	cleanupTempDirectory();
 });
 
 // 处理OCR工作器重置
 ipcMain.handle('reset-ocr-worker', async () => {
 	try {
 		await cleanupOCRResources();
+		cleanupTempDirectory();
 		console.log('OCR worker reset successfully');
 		return true;
 	} catch (error) {

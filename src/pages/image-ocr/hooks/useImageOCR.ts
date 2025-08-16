@@ -72,7 +72,7 @@ export const useImageOCR = (
     if (!window.electronAPI?.onOCRProgress) return;
 
     const cleanup = window.electronAPI.onOCRProgress((data: OCRProgress) => {
-      const image = images.find(img => img.url === data.imagePath);
+      const image = images.find(img => img.file.name === data.imagePath);
       if (!image) return;
 
       if (data.status === 'starting') {
@@ -121,8 +121,11 @@ export const useImageOCR = (
 
       // 更新状态为处理中
       updateImageText(imageId, image.text, 'processing');
-      setCurrentProcessing(image.url);
+      setCurrentProcessing(image.file.name);
 
+      // 将File对象转换为ArrayBuffer
+      const imageData = await image.file.arrayBuffer();
+      
       // 优化的OCR选项
       const ocrOptions = {
         ...options,
@@ -134,8 +137,8 @@ export const useImageOCR = (
         preserve_interword_spaces: '1',
       };
 
-      // 调用主进程OCR服务
-      const result = await window.electronAPI?.recognizeImage?.(image.url, ocrOptions);
+      // 调用主进程OCR服务，传递ArrayBuffer数据和文件名
+      const result = await window.electronAPI?.recognizeImage?.(imageData, image.file.name, ocrOptions);
       
       if (!result || !result.text) {
         throw new Error('识别结果为空');

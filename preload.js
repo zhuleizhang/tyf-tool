@@ -17,8 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     
     // 新增的OCR相关API
     selectImages: () => ipcRenderer.invoke('select-images'),
-    recognizeImage: (imagePath, options) => ipcRenderer.invoke('recognize-image', imagePath, options),
-    recognizeImagesBatch: (imagePaths, options) => ipcRenderer.invoke('recognize-images-batch', imagePaths, options),
+    recognizeImage: (imageData, fileName, options) => ipcRenderer.invoke('recognize-image', imageData, fileName, options),
+    // recognizeImagesBatch: 已废弃，使用渲染进程中的批量处理逻辑
     exportOCRExcel: (data, images) => ipcRenderer.invoke('export-ocr-excel', data, images),
     resetOCRWorker: () => ipcRenderer.invoke('reset-ocr-worker'),
     

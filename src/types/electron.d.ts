@@ -6,7 +6,7 @@ export interface ElectronAPI {
   
   // 新增的OCR相关API
   selectImages: () => Promise<string[] | null>;
-  recognizeImage: (imagePath: string, options?: any) => Promise<{
+  recognizeImage: (imageData: ArrayBuffer, fileName: string, options?: any) => Promise<{
     text: string;
     confidence: number;
     words: number;
@@ -14,7 +14,7 @@ export interface ElectronAPI {
     paragraphs: number;
     processingTime: number;
   } | null>;
-  recognizeImagesBatch: (imagePaths: string[], options?: any) => Promise<any[]>;
+  // recognizeImagesBatch: 已废弃，使用渲染进程中的批量处理逻辑
   exportOCRExcel: (data: any[], images: any[]) => Promise<boolean>;
   resetOCRWorker: () => Promise<boolean>;
   
