@@ -27,20 +27,13 @@ const App: React.FC = () => {
 						height: '100%',
 					}}
 				>
-					<FileExcelOutlined
-						style={{
-							fontSize: '24px',
-							marginRight: '10px',
-							color: '#1890ff',
-						}}
-					/>
 					<Title level={3} style={{ margin: 0 }}>
 						🍑 的工具箱
 					</Title>
 				</div>
 			</Header>
 
-			<Content style={{ padding: '24px' }}>
+			<Content style={{ padding: '24px', paddingTop: 12 }}>
 				<Tabs destroyOnHidden>
 					<TabPane tab="Excel差异分析" key="1">
 						<ExcelDiff />
