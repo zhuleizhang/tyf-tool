@@ -126,7 +126,10 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
         let errorMessage: string | undefined;
         
         try {
-          console.log(`Processing image ${i + 1}/${imagesToExport.length}: ${image.file.name}`);
+          console.log(`🔄 Processing image ${i + 1}/${imagesToExport.length}: ${image.file.name}`);
+          console.log(`   - Image ID: ${image.id}`);
+          console.log(`   - File size: ${image.file.size} bytes`);
+          console.log(`   - File type: ${image.file.type}`);
           
           // 使用新的图片数据收集工具
           const result = await collectImageData(image.file, image.url);
@@ -139,7 +142,10 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
               collectedBuffer = result.data;
               collectionMethod = result.method || 'unknown';
               imageBuffers.set(image.id, result.data);
-              console.log(`✅ Successfully collected buffer for: ${image.file.name}, size: ${result.data.byteLength} bytes, method: ${result.method}`);
+              console.log(`✅ Successfully collected buffer for: ${image.file.name}`);
+              console.log(`   - Size: ${result.data.byteLength} bytes`);
+              console.log(`   - Method: ${result.method}`);
+              console.log(`   - Image ID: ${image.id}`);
             } else {
               errorMessage = validation.error;
               console.error(`❌ Invalid image data for ${image.file.name}: ${validation.error}`);
@@ -174,6 +180,13 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
         });
       }
 
+      // 输出收集结果摘要
+      console.log(`📊 Image collection summary:`);
+      console.log(`   - Total images: ${imagesToExport.length}`);
+      console.log(`   - Successfully collected: ${imageBuffers.size}`);
+      console.log(`   - Failed: ${imagesToExport.length - imageBuffers.size}`);
+      console.log(`   - Success rate: ${((imageBuffers.size / imagesToExport.length) * 100).toFixed(1)}%`);
+
       // 准备图片数据，包含文件路径等信息
       const imageData = imagesToExport.map(image => ({
         ...image,
@@ -192,12 +205,18 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
       // 将Map转换为普通对象，以便传递给主进程
       const imageBuffersObj: { [key: string]: ArrayBuffer } = {};
       imageBuffers.forEach((buffer, id) => {
-        imageBuffersObj[id] = buffer;
+        // 验证缓冲区数据的完整性
+        if (buffer && buffer.byteLength > 0) {
+          imageBuffersObj[id] = buffer;
+          console.log(`📦 Adding buffer to export object: ${id}, size: ${buffer.byteLength} bytes`);
+        } else {
+          console.warn(`⚠️ Skipping invalid buffer for ID: ${id}`);
+        }
       });
 
       // 生成并输出调试报告
       const debugSummary = exportDebugger.getSummary();
-      console.log('=== 图片收集调试摘要 ===');
+      console.log('=== 📊 图片收集调试摘要 ===');
       console.log(`总图片数: ${debugSummary.total}`);
       console.log(`成功收集: ${debugSummary.successful}`);
       console.log(`失败数量: ${debugSummary.failed}`);
@@ -214,15 +233,26 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
       }
       
       // 输出导出信息
-      console.log('Export info:', {
+      console.log('🚀 Export info:', {
         totalImages: imagesToExport.length,
         buffersCollected: imageBuffers.size,
+        buffersInExportObj: Object.keys(imageBuffersObj).length,
         imageDataLength: imageData.length,
         exportDataLength: exportData.length,
-        successRate: `${debugSummary.successRate.toFixed(1)}%`
+        successRate: `${debugSummary.successRate.toFixed(1)}%`,
+        bufferSizes: Object.entries(imageBuffersObj).map(([id, buffer]) => ({
+          id,
+          size: buffer.byteLength
+        }))
       });
 
+      // 验证所有数据都已准备就绪
+      if (Object.keys(imageBuffersObj).length === 0 && imagesToExport.length > 0) {
+        console.warn('⚠️ No image buffers collected, Excel export may not include images');
+      }
+
       // 调用主进程导出Excel
+      console.log('📤 Calling main process for Excel export...');
       const result = await window.electronAPI?.exportOCRExcel?.(exportData, imageData, imageBuffersObj);
       
       if (!result) {

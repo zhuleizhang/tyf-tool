@@ -12,6 +12,7 @@ import {
   isImageTooLarge,
   getMimeType 
 } from './utils/imageProcessor';
+import { excelImageDebugger } from './utils/excelImageDebugger';
 
 // 删除以下两行
 // import { fileURLToPath } from 'url';
@@ -624,6 +625,9 @@ ipcMain.handle('get-image-buffer', async (event, imageUrl: string, fileName: str
 // 处理OCR结果导出（支持图片嵌入）
 ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], imageBuffers: { [key: string]: ArrayBuffer }) => {
 	try {
+		// 清空之前的调试信息
+		excelImageDebugger.clear();
+		
 		// 输出调试信息
 		console.log('Export OCR Excel called with:', {
 			dataLength: data?.length || 0,
@@ -792,10 +796,12 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 							if (arrayBuffer && arrayBuffer.byteLength > 0) {
 								imageBuffer = Buffer.from(arrayBuffer);
 								imageSource = 'provided buffer';
-								console.log(`Using provided buffer for image: ${image.file.name}, size: ${imageBuffer.length} bytes`);
+								console.log(`📦 Using provided buffer for image: ${image.file.name}, size: ${imageBuffer.length} bytes`);
 							} else {
-								console.warn(`Invalid buffer for image: ${image.file.name}`);
+								console.warn(`⚠️ Invalid buffer for image: ${image.file.name}, byteLength: ${arrayBuffer?.byteLength || 'undefined'}`);
 							}
+						} else {
+							console.warn(`⚠️ No buffer found in imageBuffers for image ID: ${image.id}, available IDs: ${Object.keys(imageBuffers || {}).join(', ')}`);
 						}
 						
 						// 优先级2：从文件路径读取
@@ -805,12 +811,12 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 									if (fs.existsSync(image.file.path)) {
 										imageBuffer = fs.readFileSync(image.file.path);
 										imageSource = 'file path';
-										console.log(`Read from file path: ${image.file.path}, size: ${imageBuffer.length} bytes`);
+										console.log(`📁 Read from file path: ${image.file.path}, size: ${imageBuffer.length} bytes`);
 									} else {
-										console.warn(`File path does not exist: ${image.file.path}`);
+										console.warn(`⚠️ File path does not exist: ${image.file.path}`);
 									}
 								} catch (pathError) {
-									console.warn(`Error reading from file path ${image.file.path}:`, pathError);
+									console.warn(`❌ Error reading from file path ${image.file.path}:`, pathError);
 								}
 							}
 						}
@@ -821,12 +827,25 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 								if (fs.existsSync(image.url)) {
 									imageBuffer = fs.readFileSync(image.url);
 									imageSource = 'URL path';
-									console.log(`Read from URL path: ${image.url}, size: ${imageBuffer.length} bytes`);
+									console.log(`🔗 Read from URL path: ${image.url}, size: ${imageBuffer.length} bytes`);
 								} else {
-									console.warn(`URL path does not exist: ${image.url}`);
+									console.warn(`⚠️ URL path does not exist: ${image.url}`);
 								}
 							} catch (urlError) {
-								console.warn(`Error reading from URL path ${image.url}:`, urlError);
+								console.warn(`❌ Error reading from URL path ${image.url}:`, urlError);
+							}
+						}
+						
+						// 如果仍然没有获取到图片数据，输出详细的调试信息
+						if (!imageBuffer) {
+							console.error(`❌ Failed to get image buffer for: ${image.file.name}`);
+							console.error(`   - Image ID: ${image.id}`);
+							console.error(`   - File path: ${image.file?.path || 'undefined'}`);
+							console.error(`   - URL: ${image.url || 'undefined'}`);
+							console.error(`   - Available buffer IDs: ${Object.keys(imageBuffers || {}).join(', ')}`);
+							console.error(`   - Buffer exists: ${imageBuffers && imageBuffers[image.id] ? 'yes' : 'no'}`);
+							if (imageBuffers && imageBuffers[image.id]) {
+								console.error(`   - Buffer size: ${imageBuffers[image.id].byteLength} bytes`);
 							}
 						}
 
@@ -836,25 +855,64 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 								// 验证图片数据的有效性
 								const imageExtension = getImageExtension(image.file.name);
 								
+								// 验证图片数据是否为有效的图片格式
+								const isValidImage = validateImageBuffer(imageBuffer, imageExtension);
+								if (!isValidImage) {
+									throw new Error('图片数据格式无效');
+								}
+								
+								console.log(`Adding image to workbook: ${image.file.name}, size: ${imageBuffer.length} bytes, extension: ${imageExtension}`);
+								
 								const imageId = workbook.addImage({
 									buffer: imageBuffer,
 									extension: imageExtension
 								});
 
-								// 将图片添加到指定单元格
+								// 将图片添加到指定单元格 - 使用更精确的位置和尺寸控制
+								const rowIndex = i + 2; // 数据行索引（第1行是表头）
+								
+								// 使用正确的ExcelJS图片定位方式
 								worksheet.addImage(imageId, {
-									tl: { col: 1, row: i + 1 }, // 图片预览列（第2列，从0开始计数）
-									ext: { width: 150, height: 100 },
+									tl: { col: 1.05, row: rowIndex - 0.95 }, // 稍微偏移避免边框重叠
+									ext: { width: 140, height: 90 }, // 设置固定尺寸
 									editAs: 'oneCell'
 								});
 								
-								console.log(`Successfully embedded image: ${image.file.name} (source: ${imageSource})`);
+								console.log(`✅ Successfully embedded image: ${image.file.name} at row ${rowIndex} (source: ${imageSource})`);
+								
+								// 记录成功的调试信息
+								excelImageDebugger.logImageEmbed({
+									imageId: image.id,
+									fileName: image.file.name,
+									fileSize: image.file.size || 0,
+									bufferSize: imageBuffer.length,
+									extension: imageExtension,
+									isValidBuffer: true,
+									embedSuccess: true,
+									position: { row: i + 2, col: 2 }
+								});
 							} catch (embedError) {
-								console.error(`Error embedding image ${image.file.name}:`, embedError);
+								const errorMessage = embedError instanceof Error ? embedError.message : '未知错误';
+								console.error(`❌ Error embedding image ${image.file.name}:`, embedError);
+								
+								// 记录失败的调试信息
+								excelImageDebugger.logImageEmbed({
+									imageId: image.id,
+									fileName: image.file.name,
+									fileSize: image.file.size || 0,
+									bufferSize: imageBuffer.length,
+									extension: getImageExtension(image.file.name),
+									isValidBuffer: validateImageBuffer(imageBuffer, getImageExtension(image.file.name)),
+									embedSuccess: false,
+									embedError: errorMessage,
+									position: { row: i + 2, col: 2 }
+								});
+								
 								// 在单元格中显示具体错误信息
 								const imageCell = worksheet.getCell(i + 2, 2);
-								imageCell.value = `嵌入失败: ${embedError instanceof Error ? embedError.message : '未知错误'}`;
+								imageCell.value = `嵌入失败: ${errorMessage}`;
 								imageCell.font = { italic: true, color: { argb: 'FF0000' } };
+								imageCell.alignment = { vertical: 'middle', horizontal: 'center' };
 							}
 						} else {
 							// 详细的失败原因分析
@@ -868,13 +926,29 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 								failureReason = '文件对象无效';
 							} else if (!image.file.name) {
 								failureReason = '文件名无效';
+							} else if (!imageBuffer) {
+								failureReason = '图片缓冲区创建失败';
 							}
+							
+							// 记录失败的调试信息
+							excelImageDebugger.logImageEmbed({
+								imageId: image.id,
+								fileName: image.file?.name || 'unknown',
+								fileSize: image.file?.size || 0,
+								bufferSize: 0,
+								extension: getImageExtension(image.file?.name || ''),
+								isValidBuffer: false,
+								embedSuccess: false,
+								embedError: failureReason,
+								position: { row: i + 2, col: 2 }
+							});
 							
 							// 在单元格中显示具体失败原因
 							const imageCell = worksheet.getCell(i + 2, 2);
 							imageCell.value = `无法嵌入: ${failureReason}`;
 							imageCell.font = { italic: true, color: { argb: 'FF6600' } };
-							console.warn(`Cannot embed image ${image.file?.name || 'unknown'}: ${failureReason}`);
+							imageCell.alignment = { vertical: 'middle', horizontal: 'center' };
+							console.warn(`⚠️ Cannot embed image ${image.file?.name || 'unknown'}: ${failureReason}`);
 						}
 					} catch (imageError) {
 						console.error(`Error processing image ${image.file?.name || 'unknown'}:`, imageError);
@@ -978,6 +1052,20 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 			// 保存文件
 			await workbook.xlsx.writeFile(result.filePath);
 			
+			// 生成并输出调试报告
+			const debugSummary = excelImageDebugger.getSummary();
+			console.log('\n=== 📊 Excel图片嵌入调试摘要 ===');
+			console.log(`总图片数: ${debugSummary.total}`);
+			console.log(`成功嵌入: ${debugSummary.successful}`);
+			console.log(`嵌入失败: ${debugSummary.failed}`);
+			console.log(`成功率: ${debugSummary.successRate.toFixed(1)}%`);
+			console.log(`处理时间: ${debugSummary.processingTime}ms`);
+			
+			if (debugSummary.failed > 0) {
+				console.log('\n📋 详细调试报告:');
+				console.log(excelImageDebugger.generateReport());
+			}
+			
 			// 发送完成进度
 			event.sender.send('export-progress', { 
 				progress: 100, 
@@ -1013,8 +1101,48 @@ function getImageExtension(fileName: string): 'jpeg' | 'png' | 'gif' {
 			return 'png';
 		case '.gif':
 			return 'gif';
+		case '.bmp':
+			return 'jpeg'; // BMP转换为JPEG
+		case '.webp':
+			return 'jpeg'; // WebP转换为JPEG
 		default:
 			return 'jpeg'; // 默认为jpeg
+	}
+}
+
+// 验证图片缓冲区数据是否有效
+function validateImageBuffer(buffer: Buffer, extension: string): boolean {
+	try {
+		if (!buffer || buffer.length === 0) {
+			return false;
+		}
+
+		// 检查文件头魔数
+		const uint8Array = new Uint8Array(buffer);
+		
+		switch (extension) {
+			case 'jpeg':
+				// JPEG: FF D8 FF
+				return uint8Array[0] === 0xFF && uint8Array[1] === 0xD8 && uint8Array[2] === 0xFF;
+			case 'png':
+				// PNG: 89 50 4E 47 0D 0A 1A 0A
+				return uint8Array[0] === 0x89 && uint8Array[1] === 0x50 && 
+				       uint8Array[2] === 0x4E && uint8Array[3] === 0x47;
+			case 'gif':
+				// GIF: 47 49 46 38
+				return uint8Array[0] === 0x47 && uint8Array[1] === 0x49 && 
+				       uint8Array[2] === 0x46 && uint8Array[3] === 0x38;
+			default:
+				// 对于其他格式，进行基本的图片格式检查
+				const isJPEG = uint8Array[0] === 0xFF && uint8Array[1] === 0xD8;
+				const isPNG = uint8Array[0] === 0x89 && uint8Array[1] === 0x50;
+				const isGIF = uint8Array[0] === 0x47 && uint8Array[1] === 0x49;
+				const isBMP = uint8Array[0] === 0x42 && uint8Array[1] === 0x4D;
+				return isJPEG || isPNG || isGIF || isBMP;
+		}
+	} catch (error) {
+		console.error('Error validating image buffer:', error);
+		return false;
 	}
 }
 

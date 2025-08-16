@@ -164,17 +164,22 @@ export async function collectFromFileReader(file: File): Promise<ImageDataResult
  * 按优先级尝试多种方法
  */
 export async function collectImageData(file: File, url?: string): Promise<ImageDataResult> {
+  console.log(`🔍 Starting image data collection for: ${file.name}`);
+  console.log(`   - File size: ${file.size} bytes`);
+  console.log(`   - File type: ${file.type}`);
+  console.log(`   - URL: ${url || 'not provided'}`);
+  
   const methods = [
-    // 方法1：从blob URL获取（如果提供）
+    // 方法1：直接从File对象获取（优先使用，最可靠）
+    async () => await collectFromFile(file),
+    
+    // 方法2：从blob URL获取（如果提供）
     async () => {
       if (url && url.startsWith('blob:')) {
         return await collectFromBlobUrl(url);
       }
       return { success: false, error: 'No blob URL provided' };
     },
-    
-    // 方法2：直接从File对象获取
-    async () => await collectFromFile(file),
     
     // 方法3：使用FileReader（备用方法）
     async () => await collectFromFileReader(file)
@@ -184,17 +189,30 @@ export async function collectImageData(file: File, url?: string): Promise<ImageD
 
   for (let i = 0; i < methods.length; i++) {
     try {
+      console.log(`🔄 Trying method ${i + 1}...`);
       const result = await methods[i]();
-      if (result.success) {
-        console.log(`Successfully collected image data using method ${i + 1} (${result.method})`);
-        return result;
+      if (result.success && result.data) {
+        console.log(`✅ Successfully collected image data using method ${i + 1} (${result.method})`);
+        console.log(`   - Data size: ${result.data.byteLength} bytes`);
+        
+        // 额外验证数据完整性
+        if (result.data.byteLength > 0) {
+          return result;
+        } else {
+          errors.push(`Method ${i + 1} (${result.method}): Empty data returned`);
+        }
       } else {
         errors.push(`Method ${i + 1} (${result.method || 'unknown'}): ${result.error}`);
       }
     } catch (error) {
-      errors.push(`Method ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`❌ Method ${i + 1} failed:`, errorMsg);
+      errors.push(`Method ${i + 1}: ${errorMsg}`);
     }
   }
+
+  console.error(`❌ All collection methods failed for: ${file.name}`);
+  console.error(`   Errors: ${errors.join('; ')}`);
 
   return {
     success: false,
