@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { message } from 'antd';
 import type { ImageData } from '../index';
-import { RecognizeOptions } from 'tesseract.js';
+import { RecognizeOptions, Rectangle } from 'tesseract.js';
 
 interface OCRProgress {
 	imagePath: string;
@@ -154,12 +154,15 @@ export const useImageOCR = (
 				// width = (图片的宽度)
 				// height = (图片的高度 - top)
 				let top, left, width, height;
-				const rectangle = {
-					top,
-					left,
-					width,
-					height,
-				};
+				let rectangle: Rectangle | undefined = undefined;
+				if (top && left && width && height) {
+					rectangle = {
+						top,
+						left,
+						width,
+						height,
+					};
+				}
 
 				// 将File对象转换为ArrayBuffer
 				const imageData = await image.file.arrayBuffer();
