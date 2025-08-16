@@ -56,7 +56,7 @@ function createWindow() {
 	mainWindow.loadFile(htmlPath);
 
 	if (process.env.NODE_ENV === 'development') {
-		mainWindow.webContents.openDevTools();
+		// mainWindow.webContents.openDevTools();
 	}
 
 	// 添加错误处理
