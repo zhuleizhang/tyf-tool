@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "start": "electron .",
-    "build:main": "tsc -p tsconfig.main.json",
+    "build:main": "webpack --config webpack.main.config.js",
     "build:app": "webpack --config webpack.config.js",
     "build": "npm run build:main && npm run build:app",
     "watch": "webpack --watch",
