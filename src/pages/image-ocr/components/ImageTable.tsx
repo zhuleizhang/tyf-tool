@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
 	Table,
 	Button,
@@ -38,6 +38,63 @@ interface DragItem {
 	id: string;
 	type: string;
 }
+
+// 编辑组件，使用React.memo优化
+const EditableTextArea: React.FC<{
+	value: string;
+	onChange: (value: string) => void;
+	onSave: () => void;
+	onCancel: () => void;
+}> = React.memo(({ value, onChange, onSave, onCancel }) => {
+	const textAreaRef = useRef<any>(null);
+
+	useEffect(() => {
+		if (textAreaRef.current) {
+			textAreaRef.current.focus();
+			const textLength = value.length;
+			textAreaRef.current.setSelectionRange(textLength, textLength);
+		}
+	}, []);
+
+	const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+		if (e.key === 'Escape') {
+			onCancel();
+		} else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+			onSave();
+		}
+	}, [onSave, onCancel]);
+
+	return (
+		<div style={{ minWidth: '300px' }}>
+			<TextArea
+				ref={textAreaRef}
+				value={value}
+				onChange={(e) => onChange(e.target.value)}
+				onKeyDown={handleKeyDown}
+				rows={4}
+				style={{ marginBottom: '8px' }}
+				placeholder="请输入识别结果..."
+			/>
+			<Space>
+				<Button
+					type="primary"
+					size="small"
+					icon={<SaveOutlined />}
+					onClick={onSave}
+				>
+					保存 (Ctrl+Enter)
+				</Button>
+				<Button
+					size="small"
+					icon={<CloseOutlined />}
+					onClick={onCancel}
+				>
+					取消 (Esc)
+				</Button>
+			</Space>
+		</div>
+	);
+});
 
 // 可拖拽的表格行组件
 const DragableRow: React.FC<{
@@ -93,18 +150,21 @@ const ImageTable: React.FC<ImageTableProps> = ({
 		setEditingText(record.text);
 	}, []);
 
-	const handleSave = useCallback(
-		(id: string) => {
-			onUpdateText(id, editingText);
+	const handleSave = useCallback(() => {
+		if (editingId) {
+			onUpdateText(editingId, editingText);
 			setEditingId(null);
 			setEditingText('');
-		},
-		[editingText, onUpdateText]
-	);
+		}
+	}, [editingId, editingText, onUpdateText]);
 
 	const handleCancel = useCallback(() => {
 		setEditingId(null);
 		setEditingText('');
+	}, []);
+
+	const handleTextChange = useCallback((value: string) => {
+		setEditingText(value);
 	}, []);
 
 	const getStatusTag = (status: ImageData['status']) => {
@@ -194,34 +254,16 @@ const ImageTable: React.FC<ImageTableProps> = ({
 			dataIndex: 'text',
 			render: (text: string, record: ImageData) => {
 				const isEditing = editingId === record.id;
+				const canEdit = record.status !== 'processing'; // 只有processing状态不能编辑
 
 				if (isEditing) {
 					return (
-						<div style={{ minWidth: '300px' }}>
-							<TextArea
-								value={editingText}
-								onChange={(e) => setEditingText(e.target.value)}
-								rows={4}
-								style={{ marginBottom: '8px' }}
-							/>
-							<Space>
-								<Button
-									type="primary"
-									size="small"
-									icon={<SaveOutlined />}
-									onClick={() => handleSave(record.id)}
-								>
-									保存
-								</Button>
-								<Button
-									size="small"
-									icon={<CloseOutlined />}
-									onClick={handleCancel}
-								>
-									取消
-								</Button>
-							</Space>
-						</div>
+						<EditableTextArea
+							value={editingText}
+							onChange={handleTextChange}
+							onSave={handleSave}
+							onCancel={handleCancel}
+						/>
 					);
 				}
 
@@ -233,14 +275,28 @@ const ImageTable: React.FC<ImageTableProps> = ({
 								padding: '8px',
 								border: '1px solid #d9d9d9',
 								borderRadius: '4px',
-								backgroundColor: '#fafafa',
+								backgroundColor: canEdit ? '#fafafa' : '#f5f5f5',
 								whiteSpace: 'pre-wrap',
 								wordBreak: 'break-word',
+								cursor: canEdit ? 'pointer' : 'default',
+								transition: 'background-color 0.2s ease',
+							}}
+							onClick={canEdit ? () => handleEdit(record) : undefined}
+							title={canEdit ? '点击编辑识别结果' : '识别中，无法编辑'}
+							onMouseEnter={(e) => {
+								if (canEdit) {
+									e.currentTarget.style.backgroundColor = '#f0f0f0';
+								}
+							}}
+							onMouseLeave={(e) => {
+								if (canEdit) {
+									e.currentTarget.style.backgroundColor = '#fafafa';
+								}
 							}}
 						>
-							{text || '暂无识别结果'}
+							{text || (record.status === 'processing' ? '识别中...' : '暂无识别结果，点击编辑')}
 						</div>
-						{record.status === 'completed' && (
+						{canEdit && (
 							<Button
 								type="link"
 								size="small"
@@ -352,4 +408,35 @@ const ImageTable: React.FC<ImageTableProps> = ({
 	);
 };
 
-export default ImageTable;
+// 使用React.memo优化渲染性能，避免不必要的重新渲染
+export default React.memo(ImageTable, (prevProps, nextProps) => {
+	// 只有当images数组发生变化时才重新渲染
+	if (prevProps.images.length !== nextProps.images.length) {
+		return false;
+	}
+	
+	// 检查images数组中的每个元素是否发生变化
+	for (let i = 0; i < prevProps.images.length; i++) {
+		const prevImage = prevProps.images[i];
+		const nextImage = nextProps.images[i];
+		
+		// 比较关键属性
+		if (
+			prevImage.id !== nextImage.id ||
+			prevImage.text !== nextImage.text ||
+			prevImage.status !== nextImage.status ||
+			prevImage.progress !== nextImage.progress ||
+			prevImage.confidence !== nextImage.confidence
+		) {
+			return false;
+		}
+	}
+	
+	// 其他props比较
+	return (
+		prevProps.onRemove === nextProps.onRemove &&
+		prevProps.onRecognize === nextProps.onRecognize &&
+		prevProps.onUpdateText === nextProps.onUpdateText &&
+		prevProps.onReorder === nextProps.onReorder
+	);
+});
