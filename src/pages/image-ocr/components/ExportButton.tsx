@@ -105,6 +105,38 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
         错误信息: image.error || ''
       }));
 
+      // 收集图片的ArrayBuffer数据
+      const imageBuffers = new Map<string, ArrayBuffer>();
+      
+      setExportProgress({
+        progress: 5,
+        status: 'processing',
+        message: '收集图片数据...'
+      });
+
+      for (let i = 0; i < imagesToExport.length; i++) {
+        const image = imagesToExport[i];
+        try {
+          // 从blob URL获取ArrayBuffer数据
+          if (image.url && image.url.startsWith('blob:')) {
+            const response = await fetch(image.url);
+            const arrayBuffer = await response.arrayBuffer();
+            imageBuffers.set(image.id, arrayBuffer);
+            console.log(`Collected buffer for image: ${image.file.name}, size: ${arrayBuffer.byteLength} bytes`);
+          }
+        } catch (error) {
+          console.warn(`Failed to collect buffer for image ${image.file.name}:`, error);
+        }
+        
+        // 更新进度
+        const progress = 5 + Math.round((i / imagesToExport.length) * 10);
+        setExportProgress({
+          progress,
+          status: 'processing',
+          message: `收集图片数据 ${i + 1}/${imagesToExport.length}...`
+        });
+      }
+
       // 准备图片数据，包含文件路径等信息
       const imageData = imagesToExport.map(image => ({
         ...image,
@@ -114,8 +146,20 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
         }
       }));
 
+      setExportProgress({
+        progress: 15,
+        status: 'processing',
+        message: '开始导出Excel...'
+      });
+
+      // 将Map转换为普通对象，以便传递给主进程
+      const imageBuffersObj: { [key: string]: ArrayBuffer } = {};
+      imageBuffers.forEach((buffer, id) => {
+        imageBuffersObj[id] = buffer;
+      });
+
       // 调用主进程导出Excel
-      const result = await window.electronAPI?.exportOCRExcel?.(exportData, imageData);
+      const result = await window.electronAPI?.exportOCRExcel?.(exportData, imageData, imageBuffersObj);
       
       if (!result) {
         setShowProgress(false);

@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import { createWorker } from 'tesseract.js';
+import * as ExcelJS from 'exceljs';
 import { 
   processImageToBase64, 
   processImagesInBatch, 
@@ -596,9 +597,32 @@ ipcMain.handle('recognize-image', async (event, imageData: ArrayBuffer, fileName
 
 // 注意：批量OCR识别已通过渲染进程中的循环调用单张识别来实现
 // 这里保留这个处理器是为了向后兼容，但推荐使用渲染进程中的批量处理逻辑
+// 处理图片数据传输（用于Excel嵌入）
+ipcMain.handle('get-image-buffer', async (event, imageUrl: string, fileName: string) => {
+	try {
+		// 如果是blob URL，无法在主进程中直接访问，返回null
+		if (imageUrl.startsWith('blob:')) {
+			console.warn(`Cannot access blob URL in main process: ${fileName}`);
+			return null;
+		}
+		
+		// 如果是文件路径，尝试读取
+		if (fs.existsSync(imageUrl)) {
+			const buffer = fs.readFileSync(imageUrl);
+			return buffer;
+		}
+		
+		console.warn(`Image file not found: ${imageUrl}`);
+		return null;
+	} catch (error) {
+		console.error(`Error reading image buffer for ${fileName}:`, error);
+		return null;
+	}
+});
 
-// 处理OCR结果导出
-ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[]) => {
+// 处理OCR结果导出（支持图片嵌入）
+// 处理OCR结果导出（支持图片嵌入）
+ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], imageBuffers: { [key: string]: ArrayBuffer }) => {
 	try {
 		// 发送导出开始进度
 		event.sender.send('export-progress', { 
@@ -615,12 +639,14 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[]) => 
 		});
 
 		if (!result.canceled && result.filePath) {
-			// 创建工作簿
-			const workbook = XLSX.utils.book_new();
+			// 使用ExcelJS创建工作簿，支持图片嵌入
+			const workbook = new ExcelJS.Workbook();
 			
-			// 准备Excel数据
-			const excelData: any[] = [];
-			const processedImages: any[] = [];
+			// 设置工作簿属性
+			workbook.creator = 'OCR图片识别工具';
+			workbook.lastModifiedBy = 'OCR图片识别工具';
+			workbook.created = new Date();
+			workbook.modified = new Date();
 			
 			// 发送进度更新
 			event.sender.send('export-progress', { 
@@ -629,77 +655,177 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[]) => 
 				message: '处理图片数据...' 
 			});
 
-			// 处理每张图片
+			// 创建主工作表
+			const worksheet = workbook.addWorksheet('OCR识别结果', {
+				pageSetup: { 
+					paperSize: 9, 
+					orientation: 'landscape',
+					fitToPage: true,
+					fitToWidth: 1,
+					fitToHeight: 0
+				}
+			});
+
+			// 设置表头
+			const headers = ['序号', '图片预览', '文件名', '文件大小', '识别状态', '置信度', '识别文字', '错误信息'];
+			const headerRow = worksheet.addRow(headers);
+			
+			// 设置表头样式
+			headerRow.eachCell((cell, colNumber) => {
+				cell.font = { bold: true, color: { argb: 'FFFFFF' } };
+				cell.fill = {
+					type: 'pattern',
+					pattern: 'solid',
+					fgColor: { argb: '4472C4' }
+				};
+				cell.alignment = { vertical: 'middle', horizontal: 'center' };
+				cell.border = {
+					top: { style: 'thin' },
+					left: { style: 'thin' },
+					bottom: { style: 'thin' },
+					right: { style: 'thin' }
+				};
+			});
+
+			// 设置列宽
+			worksheet.columns = [
+				{ width: 8 },   // 序号
+				{ width: 25 },  // 图片预览
+				{ width: 25 },  // 文件名
+				{ width: 15 },  // 文件大小
+				{ width: 12 },  // 识别状态
+				{ width: 12 },  // 置信度
+				{ width: 50 },  // 识别文字
+				{ width: 30 }   // 错误信息
+			];
+
+			// 处理每张图片并添加到Excel
 			for (let i = 0; i < images.length; i++) {
 				const image = images[i];
 				
 				try {
-					// 获取图片路径
-					const imagePath = image.file.path || image.url;
+					// 计算文件大小
 					let fileSizeKB = 0;
-					let imageInfo = null;
-					
-					// 如果有图片路径，获取图片信息
-					if (imagePath && fs.existsSync(imagePath)) {
-						try {
-							const stats = fs.statSync(imagePath);
-							fileSizeKB = Math.round(stats.size / 1024);
-							
-							// 检查图片是否过大
-							if (isImageTooLarge(imagePath, 5)) { // 限制5MB
-								console.warn(`Large image file: ${image.file.name} (${formatFileSize(stats.size)})`);
-							}
-							
-							// 生成图片缩略图信息
-							imageInfo = generateImageThumbnailInfo(imagePath);
-							
-							// 处理图片为base64（用于可能的图片嵌入）
-							const processedImage = await processImageToBase64(imagePath, {
-								maxWidth: 200,
-								maxHeight: 150,
-								quality: 0.7
-							});
-							
-							processedImages.push({
-								row: i + 2, // Excel行号从1开始，加上表头行
-								...processedImage,
-								name: image.file.name,
-								originalPath: imagePath
-							});
-							
-						} catch (imageError) {
-							console.error(`Error processing image ${image.file.name}:`, imageError);
-							imageInfo = {
-								name: image.file.name,
-								size: '未知',
-								type: '未知',
-								path: imagePath
-							};
-						}
-					} else if (image.file.size) {
+					if (image.file && image.file.size) {
 						fileSizeKB = Math.round(image.file.size / 1024);
 					}
 					
 					// 计算置信度
 					const confidence = image.confidence ? `${(image.confidence * 100).toFixed(1)}%` : '未知';
 					
-					// 添加基础数据行
-					const rowData = {
-						'序号': i + 1,
-						'文件名': image.file.name,
-						'文件大小(KB)': fileSizeKB || '未知',
-						'图片类型': imageInfo?.type || '未知',
-						'识别状态': getStatusText(image.status),
-						'置信度': confidence,
-						'识别文字': image.text || '暂无识别结果',
-						'错误信息': image.error || '',
-						'图片路径': imageInfo?.path || '无'
-					};
-					
-					excelData.push(rowData);
+					// 添加数据行
+					const dataRow = worksheet.addRow([
+						i + 1,
+						'', // 图片预览列，稍后添加图片
+						image.file.name,
+						fileSizeKB > 1024 ? `${(fileSizeKB / 1024).toFixed(1)}MB` : `${fileSizeKB}KB`,
+						getStatusText(image.status),
+						confidence,
+						image.text || '暂无识别结果',
+						image.error || ''
+					]);
+
+					// 设置行高以适应图片
+					dataRow.height = 120;
+
+					// 设置数据行样式
+					dataRow.eachCell((cell, colNumber) => {
+						cell.alignment = { 
+							vertical: 'middle', 
+							horizontal: colNumber === 7 ? 'left' : 'center', // 识别文字左对齐
+							wrapText: true 
+						};
+						cell.border = {
+							top: { style: 'thin' },
+							left: { style: 'thin' },
+							bottom: { style: 'thin' },
+							right: { style: 'thin' }
+						};
+						
+						// 根据状态设置背景色
+						if (colNumber === 5) { // 识别状态列
+							switch (image.status) {
+								case 'completed':
+									cell.fill = {
+										type: 'pattern',
+										pattern: 'solid',
+										fgColor: { argb: 'E8F5E8' }
+									};
+									break;
+								case 'error':
+									cell.fill = {
+										type: 'pattern',
+										pattern: 'solid',
+										fgColor: { argb: 'FFEBEE' }
+									};
+									break;
+								case 'processing':
+									cell.fill = {
+										type: 'pattern',
+										pattern: 'solid',
+										fgColor: { argb: 'FFF3E0' }
+									};
+									break;
+							}
+						}
+					});
+
+					// 尝试嵌入图片
+					try {
+						let imageBuffer: Buffer | null = null;
+						
+						// 首先尝试从传入的imageBuffers中获取
+						if (imageBuffers && imageBuffers[image.id]) {
+							const arrayBuffer = imageBuffers[image.id];
+							if (arrayBuffer) {
+								imageBuffer = Buffer.from(arrayBuffer);
+								console.log(`Using provided buffer for image: ${image.file.name}`);
+							}
+						}
+						
+						// 如果没有找到缓冲区，尝试从文件路径读取
+						if (!imageBuffer) {
+							if (image.file && image.file.path && fs.existsSync(image.file.path)) {
+								imageBuffer = fs.readFileSync(image.file.path);
+								console.log(`Read from file path: ${image.file.path}`);
+							} else if (typeof image.url === 'string' && fs.existsSync(image.url)) {
+								imageBuffer = fs.readFileSync(image.url);
+								console.log(`Read from URL path: ${image.url}`);
+							}
+						}
+
+						// 如果成功获取图片数据，添加到Excel
+						if (imageBuffer && imageBuffer.length > 0) {
+							const imageId = workbook.addImage({
+								buffer: imageBuffer,
+								extension: getImageExtension(image.file.name)
+							});
+
+							// 将图片添加到指定单元格
+							worksheet.addImage(imageId, {
+								tl: { col: 1, row: i + 1 }, // 图片预览列（第2列，从0开始计数）
+								ext: { width: 150, height: 100 },
+								editAs: 'oneCell'
+							});
+							
+							console.log(`Successfully embedded image: ${image.file.name}`);
+						} else {
+							// 如果无法读取图片，在单元格中显示提示
+							const imageCell = worksheet.getCell(i + 2, 2); // 第i+2行，第2列
+							imageCell.value = '图片无法嵌入';
+							imageCell.font = { italic: true, color: { argb: '888888' } };
+							console.warn(`Cannot embed image: ${image.file.name}`);
+						}
+					} catch (imageError) {
+						console.error(`Error embedding image ${image.file.name}:`, imageError);
+						// 在单元格中显示错误信息
+						const imageCell = worksheet.getCell(i + 2, 2);
+						imageCell.value = '图片处理失败';
+						imageCell.font = { italic: true, color: { argb: 'FF0000' } };
+					}
 					
 					// 更新进度
-					const progress = 10 + Math.round((i / images.length) * 50);
+					const progress = 10 + Math.round((i / images.length) * 60);
 					event.sender.send('export-progress', { 
 						progress, 
 						status: 'processing',
@@ -709,128 +835,88 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[]) => 
 				} catch (error) {
 					console.error(`Error processing image ${i}:`, error);
 					// 即使单张图片失败，也继续处理其他图片
-					excelData.push({
-						'序号': i + 1,
-						'文件名': image.file.name,
-						'文件大小(KB)': '未知',
-						'图片类型': '未知',
-						'识别状态': '处理失败',
-						'置信度': '未知',
-						'识别文字': image.text || '暂无识别结果',
-						'错误信息': error instanceof Error ? error.message : '处理图片时发生错误',
-						'图片路径': '无'
+					const errorRow = worksheet.addRow([
+						i + 1,
+						'处理失败',
+						image.file.name,
+						'未知',
+						'处理失败',
+						'未知',
+						image.text || '暂无识别结果',
+						error instanceof Error ? error.message : '处理图片时发生错误'
+					]);
+					
+					errorRow.eachCell((cell) => {
+						cell.fill = {
+							type: 'pattern',
+							pattern: 'solid',
+							fgColor: { argb: 'FFEBEE' }
+						};
+						cell.alignment = { vertical: 'middle', horizontal: 'center' };
 					});
 				}
 			}
 
 			// 发送进度更新
 			event.sender.send('export-progress', { 
-				progress: 60, 
-				status: 'processing',
-				message: '创建Excel工作表...' 
-			});
-
-			// 创建工作表
-			const worksheet = XLSX.utils.json_to_sheet(excelData);
-			
-			// 设置列宽
-			const columnWidths = [
-				{ wch: 8 },   // 序号
-				{ wch: 25 },  // 文件名
-				{ wch: 15 },  // 文件大小
-				{ wch: 15 },  // 图片类型
-				{ wch: 12 },  // 识别状态
-				{ wch: 12 },  // 置信度
-				{ wch: 50 },  // 识别文字
-				{ wch: 30 },  // 错误信息
-				{ wch: 40 }   // 图片路径
-			];
-			worksheet['!cols'] = columnWidths;
-
-			// 设置行高（为更好的可读性）
-			const rowHeights = [];
-			for (let i = 0; i <= excelData.length; i++) {
-				rowHeights.push({ hpt: i === 0 ? 30 : 60 }); // 表头30像素，数据行60像素
-			}
-			worksheet['!rows'] = rowHeights;
-
-			// 发送进度更新
-			event.sender.send('export-progress', { 
 				progress: 75, 
-				status: 'processing',
-				message: '优化表格样式...' 
-			});
-
-			// 添加图片信息到工作表（由于xlsx库限制，添加图片说明而非实际图片）
-			if (processedImages.length > 0) {
-				// 创建图片信息工作表
-				const imageInfoData = processedImages.map((imgData, index) => ({
-					'序号': index + 1,
-					'文件名': imgData.name,
-					'原始大小': formatFileSize(imgData.originalSize),
-					'压缩后大小': formatFileSize(imgData.compressedSize),
-					'MIME类型': imgData.mimeType,
-					'预计尺寸': `${imgData.dimensions.width}x${imgData.dimensions.height}`,
-					'文件路径': imgData.originalPath,
-					'处理状态': '已处理'
-				}));
-
-				const imageInfoWorksheet = XLSX.utils.json_to_sheet(imageInfoData);
-				imageInfoWorksheet['!cols'] = [
-					{ wch: 8 },   // 序号
-					{ wch: 25 },  // 文件名
-					{ wch: 15 },  // 原始大小
-					{ wch: 15 },  // 压缩后大小
-					{ wch: 15 },  // MIME类型
-					{ wch: 15 },  // 预计尺寸
-					{ wch: 40 },  // 文件路径
-					{ wch: 12 }   // 处理状态
-				];
-				
-				XLSX.utils.book_append_sheet(workbook, imageInfoWorksheet, '图片信息');
-			}
-
-			// 发送进度更新
-			event.sender.send('export-progress', { 
-				progress: 85, 
 				status: 'processing',
 				message: '生成统计信息...' 
 			});
 
-			// 添加工作表到工作簿
-			XLSX.utils.book_append_sheet(workbook, worksheet, 'OCR识别结果');
-			
 			// 添加统计信息工作表
+			const statsWorksheet = workbook.addWorksheet('统计信息');
+			
 			const completedCount = images.filter(img => img.status === 'completed').length;
 			const errorCount = images.filter(img => img.status === 'error').length;
 			const pendingCount = images.filter(img => img.status === 'pending').length;
 			const processingCount = images.filter(img => img.status === 'processing').length;
 			
 			const statsData = [
-				{ '项目': '总图片数量', '数值': images.length, '百分比': '100%' },
-				{ '项目': '识别成功', '数值': completedCount, '百分比': `${((completedCount / images.length) * 100).toFixed(1)}%` },
-				{ '项目': '识别失败', '数值': errorCount, '百分比': `${((errorCount / images.length) * 100).toFixed(1)}%` },
-				{ '项目': '识别中', '数值': processingCount, '百分比': `${((processingCount / images.length) * 100).toFixed(1)}%` },
-				{ '项目': '待识别', '数值': pendingCount, '百分比': `${((pendingCount / images.length) * 100).toFixed(1)}%` },
-				{ '项目': '平均置信度', '数值': calculateAverageConfidence(images), '百分比': '-' },
-				{ '项目': '总图片大小', '数值': calculateTotalImageSize(images), '百分比': '-' },
-				{ '项目': '导出时间', '数值': new Date().toLocaleString('zh-CN'), '百分比': '-' },
-				{ '项目': '导出文件', '数值': path.basename(result.filePath), '百分比': '-' }
+				['项目', '数值', '百分比'],
+				['总图片数量', images.length, '100%'],
+				['识别成功', completedCount, `${((completedCount / images.length) * 100).toFixed(1)}%`],
+				['识别失败', errorCount, `${((errorCount / images.length) * 100).toFixed(1)}%`],
+				['识别中', processingCount, `${((processingCount / images.length) * 100).toFixed(1)}%`],
+				['待识别', pendingCount, `${((pendingCount / images.length) * 100).toFixed(1)}%`],
+				['平均置信度', calculateAverageConfidence(images), '-'],
+				['总图片大小', calculateTotalImageSize(images), '-'],
+				['导出时间', new Date().toLocaleString('zh-CN'), '-'],
+				['导出文件', path.basename(result.filePath), '-']
 			];
 			
-			const statsWorksheet = XLSX.utils.json_to_sheet(statsData);
-			statsWorksheet['!cols'] = [{ wch: 15 }, { wch: 15 }, { wch: 12 }];
-			XLSX.utils.book_append_sheet(workbook, statsWorksheet, '统计信息');
+			// 添加统计数据
+			statsData.forEach((row, index) => {
+				const addedRow = statsWorksheet.addRow(row);
+				if (index === 0) {
+					// 表头样式
+					addedRow.eachCell((cell) => {
+						cell.font = { bold: true };
+						cell.fill = {
+							type: 'pattern',
+							pattern: 'solid',
+							fgColor: { argb: 'E7E6E6' }
+						};
+					});
+				}
+			});
+			
+			// 设置统计表列宽
+			statsWorksheet.columns = [
+				{ width: 15 },
+				{ width: 15 },
+				{ width: 12 }
+			];
 
 			// 发送进度更新
 			event.sender.send('export-progress', { 
-				progress: 95, 
+				progress: 90, 
 				status: 'processing',
 				message: '保存Excel文件...' 
 			});
 
-			// 写入文件
-			XLSX.writeFile(workbook, result.filePath);
+			// 保存文件
+			await workbook.xlsx.writeFile(result.filePath);
 			
 			// 发送完成进度
 			event.sender.send('export-progress', { 
@@ -855,6 +941,22 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[]) => 
 		throw error;
 	}
 });
+
+// 获取图片文件扩展名
+function getImageExtension(fileName: string): 'jpeg' | 'png' | 'gif' {
+	const ext = path.extname(fileName).toLowerCase();
+	switch (ext) {
+		case '.jpg':
+		case '.jpeg':
+			return 'jpeg';
+		case '.png':
+			return 'png';
+		case '.gif':
+			return 'gif';
+		default:
+			return 'jpeg'; // 默认为jpeg
+	}
+}
 
 // 获取状态文本
 function getStatusText(status: string): string {

@@ -202,3 +202,59 @@ export function generateImageThumbnailInfo(imagePath: string): {
     path: imagePath
   };
 }
+
+/**
+ * 从ArrayBuffer创建图片缓冲区（用于Excel嵌入）
+ */
+export function createImageBufferFromArrayBuffer(arrayBuffer: ArrayBuffer, fileName: string): Buffer {
+  try {
+    return Buffer.from(arrayBuffer);
+  } catch (error) {
+    throw new Error(`创建图片缓冲区失败: ${error instanceof Error ? error.message : '未知错误'}`);
+  }
+}
+
+/**
+ * 验证图片数据是否有效
+ */
+export function validateImageData(data: ArrayBuffer | Buffer, fileName: string): boolean {
+  try {
+    if (!data || data.byteLength === 0) {
+      return false;
+    }
+    
+    // 检查文件头，判断是否为有效图片
+    const buffer = data instanceof ArrayBuffer ? Buffer.from(data) : data;
+    
+    // JPEG文件头: FF D8 FF
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+      return true;
+    }
+    
+    // PNG文件头: 89 50 4E 47 0D 0A 1A 0A
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+      return true;
+    }
+    
+    // GIF文件头: 47 49 46 38
+    if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) {
+      return true;
+    }
+    
+    // BMP文件头: 42 4D
+    if (buffer[0] === 0x42 && buffer[1] === 0x4D) {
+      return true;
+    }
+    
+    // WebP文件头: 52 49 46 46 ... 57 45 42 50
+    if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+        buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error validating image data:', error);
+    return false;
+  }
+}

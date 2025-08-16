@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     selectImages: () => ipcRenderer.invoke('select-images'),
     recognizeImage: (imageData, fileName, options) => ipcRenderer.invoke('recognize-image', imageData, fileName, options),
     // recognizeImagesBatch: 已废弃，使用渲染进程中的批量处理逻辑
-    exportOCRExcel: (data, images) => ipcRenderer.invoke('export-ocr-excel', data, images),
+    exportOCRExcel: (data, images, imageBuffers) => ipcRenderer.invoke('export-ocr-excel', data, images, imageBuffers),
     resetOCRWorker: () => ipcRenderer.invoke('reset-ocr-worker'),
     
     // 事件监听器

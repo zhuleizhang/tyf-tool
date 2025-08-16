@@ -15,7 +15,7 @@ export interface ElectronAPI {
     processingTime: number;
   } | null>;
   // recognizeImagesBatch: 已废弃，使用渲染进程中的批量处理逻辑
-  exportOCRExcel: (data: any[], images: any[]) => Promise<boolean>;
+  exportOCRExcel: (data: any[], images: any[], imageBuffers?: { [key: string]: ArrayBuffer }) => Promise<boolean>;
   resetOCRWorker: () => Promise<boolean>;
   
   // 事件监听器
