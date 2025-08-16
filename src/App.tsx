@@ -2,11 +2,13 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Layout, Tabs, Typography, message } from 'antd';
 import {
-	FileExcelOutlined, // 导入刷新图标
+	FileExcelOutlined,
+	PictureOutlined
 } from '@ant-design/icons';
 import 'antd/dist/reset.css';
 import TabPane from 'antd/es/tabs/TabPane';
 import ExcelDiff from './pages/excel-diff';
+import ImageOCR from './pages/image-ocr';
 
 const { Header, Content, Footer } = Layout;
 const { Title } = Typography;
@@ -36,7 +38,7 @@ const App: React.FC = () => {
 						}}
 					/>
 					<Title level={3} style={{ margin: 0 }}>
-						Excel异常数据分析工具
+						🍑 的工具箱
 					</Title>
 				</div>
 			</Header>
@@ -45,6 +47,17 @@ const App: React.FC = () => {
 				<Tabs>
 					<TabPane tab="Excel差异分析" key="1">
 						<ExcelDiff />
+					</TabPane>
+					<TabPane 
+						tab={
+							<span>
+								<PictureOutlined />
+								图片文字识别
+							</span>
+						} 
+						key="2"
+					>
+						<ImageOCR />
 					</TabPane>
 				</Tabs>
 			</Content>

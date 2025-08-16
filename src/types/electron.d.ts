@@ -1,0 +1,36 @@
+export interface ElectronAPI {
+  // 现有的Excel相关API
+  selectFile: () => Promise<string | null>;
+  readExcel: (filePath: string) => Promise<any>;
+  exportResults: (data: any[], filePath: string) => Promise<boolean>;
+  
+  // 新增的OCR相关API
+  selectImages: () => Promise<string[] | null>;
+  recognizeImage: (imagePath: string, options?: any) => Promise<{
+    text: string;
+    confidence: number;
+    words: number;
+    lines: number;
+    paragraphs: number;
+    processingTime: number;
+  } | null>;
+  recognizeImagesBatch: (imagePaths: string[], options?: any) => Promise<any[]>;
+  exportOCRExcel: (data: any[], images: any[]) => Promise<boolean>;
+  resetOCRWorker: () => Promise<boolean>;
+  
+  // 事件监听器
+  on: (channel: string, callback: (event: any, data: any) => void) => void;
+  removeListener: (channel: string, callback: (event: any, data: any) => void) => void;
+  removeAllListeners: (channel: string) => void;
+  
+  // OCR进度监听（保持向后兼容）
+  onOCRProgress: (callback: (data: any) => void) => () => void;
+  onBatchOCRProgress: (callback: (data: any) => void) => () => void;
+  onExportProgress: (callback: (data: any) => void) => () => void;
+}
+
+declare global {
+  interface Window {
+    electronAPI?: ElectronAPI;
+  }
+}
