@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ipcRenderer } from 'electron';
 import {
 	Layout,
 	Button,
@@ -79,10 +78,10 @@ const ExcelDiff: React.FC = () => {
 	const handleFileSelect = async () => {
 		setLoading(true);
 		try {
-			const path = await ipcRenderer.invoke('select-file');
+			const path = await window.electronAPI?.selectFile();
 			if (path) {
 				setFilePath(path);
-				const data = await ipcRenderer.invoke('read-excel', path);
+				const data = await window.electronAPI?.readExcel(path);
 				setExcelData(data);
 				message.success('文件加载成功');
 			}
@@ -103,7 +102,7 @@ const ExcelDiff: React.FC = () => {
 		setLoading(true);
 		try {
 			// 重新读取当前选中的文件
-			const data = await ipcRenderer.invoke('read-excel', filePath);
+			const data = await window.electronAPI?.readExcel(filePath);
 			setExcelData(data);
 			// 清空之前的分析结果
 			setResults([]);
@@ -201,13 +200,10 @@ const ExcelDiff: React.FC = () => {
 				}))
 			);
 
-			const path = await ipcRenderer.invoke('select-file', {
-				properties: ['saveFile'],
-				filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
-			});
+			const path = await window.electronAPI?.selectFile();
 
 			if (path) {
-				await ipcRenderer.invoke('export-results', exportData, path);
+				await window.electronAPI?.exportResults(exportData, path);
 				message.success('导出成功');
 			}
 		} catch (error) {
