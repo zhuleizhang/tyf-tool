@@ -254,8 +254,8 @@ const ImageTable: React.FC<ImageTableProps> = ({
 				if (confidence === undefined) {
 					return <div>暂无</div>;
 				}
-				let confidenceText = confidence > 50 ? '高' : '低';
-				let confidenceColor = confidence > 50 ? 'success' : 'error';
+				let confidenceText = confidence > 0.5 ? '高' : '低';
+				let confidenceColor = confidence > 0.5 ? 'success' : 'error';
 
 				return (
 					<div>
