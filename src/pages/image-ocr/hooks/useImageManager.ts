@@ -5,7 +5,7 @@ import type { ImageData } from '../index';
 // 文件大小限制（10MB）
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 // 最大图片数量限制
-const MAX_IMAGE_COUNT = 50;
+const MAX_IMAGE_COUNT = Infinity;
 
 export const useImageManager = () => {
   const [images, setImages] = useState<ImageData[]>([]);
