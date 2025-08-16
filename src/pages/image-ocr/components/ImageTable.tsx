@@ -41,57 +41,30 @@ interface DragItem {
 
 // 编辑组件，使用React.memo优化
 const EditableTextArea: React.FC<{
+	disabled?: boolean;
 	value: string;
 	onChange: (value: string) => void;
 	onSave: () => void;
 	onCancel: () => void;
-}> = React.memo(({ value, onChange, onSave, onCancel }) => {
-	const textAreaRef = useRef<any>(null);
+}> = React.memo(({ disabled, value, onChange, onSave, onCancel }) => {
+	const [innerValue, setInnerValue] = useState(value);
 
-	useEffect(() => {
-		if (textAreaRef.current) {
-			textAreaRef.current.focus();
-			const textLength = value.length;
-			textAreaRef.current.setSelectionRange(textLength, textLength);
-		}
+	const handleChangeInnerValue = useCallback((value: string) => {
+		setInnerValue(value);
 	}, []);
-
-	const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-		if (e.key === 'Escape') {
-			onCancel();
-		} else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-			onSave();
-		}
-	}, [onSave, onCancel]);
 
 	return (
 		<div style={{ minWidth: '300px' }}>
 			<TextArea
-				ref={textAreaRef}
-				value={value}
-				onChange={(e) => onChange(e.target.value)}
-				onKeyDown={handleKeyDown}
+				disabled={disabled}
+				value={innerValue}
+				onChange={(e) => handleChangeInnerValue(e.target.value)}
+				onBlur={() => onChange(innerValue)}
+				onFocus={() => setInnerValue(value)}
 				rows={4}
 				style={{ marginBottom: '8px' }}
 				placeholder="请输入识别结果..."
 			/>
-			<Space>
-				<Button
-					type="primary"
-					size="small"
-					icon={<SaveOutlined />}
-					onClick={onSave}
-				>
-					保存 (Ctrl+Enter)
-				</Button>
-				<Button
-					size="small"
-					icon={<CloseOutlined />}
-					onClick={onCancel}
-				>
-					取消 (Esc)
-				</Button>
-			</Space>
 		</div>
 	);
 });
@@ -253,61 +226,20 @@ const ImageTable: React.FC<ImageTableProps> = ({
 			title: '识别结果',
 			dataIndex: 'text',
 			render: (text: string, record: ImageData) => {
-				const isEditing = editingId === record.id;
 				const canEdit = record.status !== 'processing'; // 只有processing状态不能编辑
 
-				if (isEditing) {
-					return (
-						<EditableTextArea
-							value={editingText}
-							onChange={handleTextChange}
-							onSave={handleSave}
-							onCancel={handleCancel}
-						/>
-					);
-				}
-
 				return (
-					<div style={{ minWidth: '300px' }}>
-						<div
-							style={{
-								minHeight: '60px',
-								padding: '8px',
-								border: '1px solid #d9d9d9',
-								borderRadius: '4px',
-								backgroundColor: canEdit ? '#fafafa' : '#f5f5f5',
-								whiteSpace: 'pre-wrap',
-								wordBreak: 'break-word',
-								cursor: canEdit ? 'pointer' : 'default',
-								transition: 'background-color 0.2s ease',
-							}}
-							onClick={canEdit ? () => handleEdit(record) : undefined}
-							title={canEdit ? '点击编辑识别结果' : '识别中，无法编辑'}
-							onMouseEnter={(e) => {
-								if (canEdit) {
-									e.currentTarget.style.backgroundColor = '#f0f0f0';
-								}
-							}}
-							onMouseLeave={(e) => {
-								if (canEdit) {
-									e.currentTarget.style.backgroundColor = '#fafafa';
-								}
-							}}
-						>
-							{text || (record.status === 'processing' ? '识别中...' : '暂无识别结果，点击编辑')}
-						</div>
-						{canEdit && (
-							<Button
-								type="link"
-								size="small"
-								icon={<EditOutlined />}
-								onClick={() => handleEdit(record)}
-								style={{ padding: '4px 0', marginTop: '4px' }}
-							>
-								编辑
-							</Button>
-						)}
-					</div>
+					<EditableTextArea
+						value={text}
+						disabled={!canEdit}
+						onChange={(newValue) => {
+							console.log('newValue', newValue);
+
+							onUpdateText(record.id, newValue);
+						}}
+						onSave={handleSave}
+						onCancel={handleCancel}
+					/>
 				);
 			},
 		},
@@ -414,12 +346,12 @@ export default React.memo(ImageTable, (prevProps, nextProps) => {
 	if (prevProps.images.length !== nextProps.images.length) {
 		return false;
 	}
-	
+
 	// 检查images数组中的每个元素是否发生变化
 	for (let i = 0; i < prevProps.images.length; i++) {
 		const prevImage = prevProps.images[i];
 		const nextImage = nextProps.images[i];
-		
+
 		// 比较关键属性
 		if (
 			prevImage.id !== nextImage.id ||
@@ -431,7 +363,7 @@ export default React.memo(ImageTable, (prevProps, nextProps) => {
 			return false;
 		}
 	}
-	
+
 	// 其他props比较
 	return (
 		prevProps.onRemove === nextProps.onRemove &&
