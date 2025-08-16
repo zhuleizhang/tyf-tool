@@ -126,18 +126,20 @@ export const useImageOCR = (
       // 将File对象转换为ArrayBuffer
       const imageData = await image.file.arrayBuffer();
       
-      // 优化的OCR选项
+      // OCR选项（语言参数将在主进程中处理）
       const ocrOptions = {
         ...options,
-        psm: options.psm || 6, // 页面分割模式
-        oem: options.oem || 1,  // OCR引擎模式
-        // 添加更多优化选项
+        psm: options.psm || 6, // 页面分割模式：假设一个统一的文本块
+        oem: options.oem || 1,  // OCR引擎模式：使用LSTM神经网络
+        // 基础选项
         tessedit_char_whitelist: options.whitelist || undefined,
         tessedit_pageseg_mode: options.pageSegMode || 6,
         preserve_interword_spaces: '1',
+        // 语言参数
+        language: options.language || 'chi_sim'
       };
 
-      // 调用主进程OCR服务，传递ArrayBuffer数据和文件名
+      // 调用主进程OCR服务，传递ArrayBuffer数据、文件名和OCR选项
       const result = await window.electronAPI?.recognizeImage?.(imageData, image.file.name, ocrOptions);
       
       if (!result || !result.text) {
@@ -234,15 +236,15 @@ export const useImageOCR = (
         });
       }
 
-      // 动态并发控制：根据系统性能调整
+      // 针对中文OCR优化的并发控制：降低并发数提高单张图片处理质量
       const systemConcurrency = navigator.hardwareConcurrency || 4;
       const concurrencyLimit = Math.min(
-        Math.max(2, Math.floor(systemConcurrency / 2)), // 使用一半的CPU核心
-        5, // 最大不超过5个并发
+        Math.max(1, Math.floor(systemConcurrency / 4)), // 使用四分之一的CPU核心，避免资源竞争
+        2, // 最大不超过2个并发，确保每个OCR任务有足够资源
         pendingImages.length
       );
       
-      console.log(`使用 ${concurrencyLimit} 个并发处理 ${pendingImages.length} 张图片`);
+      console.log(`使用 ${concurrencyLimit} 个并发处理 ${pendingImages.length} 张图片（中文优化模式）`);
 
       const results = [];
       let completed = 0;
@@ -283,9 +285,9 @@ export const useImageOCR = (
         const batchResults = await Promise.allSettled(batchPromises);
         results.push(...batchResults);
         
-        // 自适应延迟：根据系统负载调整
+        // 中文OCR优化延迟：给每批处理更多时间，提高识别质量
         if (i + concurrencyLimit < pendingImages.length) {
-          const delay = Math.max(100, 500 - (systemConcurrency * 50)); // 性能越好延迟越短
+          const delay = Math.max(500, 1000 - (systemConcurrency * 100)); // 增加延迟时间，确保OCR质量
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }

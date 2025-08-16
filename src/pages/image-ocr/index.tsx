@@ -35,6 +35,8 @@ import ExportButton from './components/ExportButton';
 import ExportFeatures from './components/ExportFeatures';
 import PerformanceMonitor from './components/PerformanceMonitor';
 import KeyboardShortcuts from './components/KeyboardShortcuts';
+import LanguageSelector from './components/LanguageSelector';
+import OptimizationInfo from './components/OptimizationInfo';
 import { useImageOCR } from './hooks/useImageOCR';
 import { useImageManager } from './hooks/useImageManager';
 
@@ -55,6 +57,7 @@ export interface ImageData {
 const ImageOCR: React.FC = () => {
   const [showStats, setShowStats] = useState(false);
   const [lastActivity, setLastActivity] = useState<string>('');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('chi_sim'); // 默认中文模式
 
   const {
     images,
@@ -140,26 +143,26 @@ const ImageOCR: React.FC = () => {
     }
     
     try {
-      setLastActivity(`开始批量识别 ${pendingCount} 张图片`);
-      await recognizeAll();
+      setLastActivity(`开始批量识别 ${pendingCount} 张图片（${getLanguageDisplayName(selectedLanguage)}模式）`);
+      await recognizeAll({ language: selectedLanguage });
       setLastActivity('批量识别完成');
     } catch (error) {
       setLastActivity('批量识别失败');
       console.error('Batch recognition error:', error);
     }
-  }, [images.length, pendingCount, recognizeAll]);
+  }, [images.length, pendingCount, recognizeAll, selectedLanguage]);
 
   const handleRecognizeSingle = useCallback(async (imageId: string) => {
     const image = images.find(img => img.id === imageId);
     try {
-      setLastActivity(`识别图片: ${image?.file.name}`);
-      await recognizeImage(imageId);
+      setLastActivity(`识别图片: ${image?.file.name}（${getLanguageDisplayName(selectedLanguage)}模式）`);
+      await recognizeImage(imageId, { language: selectedLanguage });
       setLastActivity(`图片识别完成: ${image?.file.name}`);
     } catch (error) {
       setLastActivity(`图片识别失败: ${image?.file.name}`);
       console.error('Single recognition error:', error);
     }
-  }, [recognizeImage, images]);
+  }, [recognizeImage, images, selectedLanguage]);
 
   const handleCancelRecognition = useCallback(() => {
     cancelRecognition();
@@ -184,6 +187,22 @@ const ImageOCR: React.FC = () => {
     clearImages();
     setLastActivity('已清空所有数据');
   }, [clearImages]);
+
+  // 获取语言显示名称
+  const getLanguageDisplayName = (language: string): string => {
+    const languageMap: { [key: string]: string } = {
+      'chi_sim': '中文',
+      'eng': '英文',
+      'chi_sim+eng': '中英混合'
+    };
+    return languageMap[language] || language;
+  };
+
+  // 处理语言变更
+  const handleLanguageChange = useCallback((language: string) => {
+    setSelectedLanguage(language);
+    setLastActivity(`切换到${getLanguageDisplayName(language)}识别模式`);
+  }, []);
 
   return (
     <div style={{ padding: '24px' }}>
@@ -299,6 +318,15 @@ const ImageOCR: React.FC = () => {
             )}
           </Card>
         )}
+
+        {/* 优化说明 */}
+        <OptimizationInfo />
+
+        {/* 语言选择区域 */}
+        <LanguageSelector
+          selectedLanguage={selectedLanguage}
+          onLanguageChange={handleLanguageChange}
+        />
 
         {/* 图片上传区域 */}
         <Card 

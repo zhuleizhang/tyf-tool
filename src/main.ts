@@ -188,6 +188,7 @@ ipcMain.handle('select-images', async () => {
 let ocrWorker: any = null;
 let ocrWorkerInitializing = false;
 let workerCreationTime = 0;
+let currentWorkerLanguage: string = '';
 const WORKER_TIMEOUT = 30000; // 30秒超时
 const WORKER_MAX_IDLE_TIME = 10 * 60 * 1000; // 10分钟空闲时间
 let lastWorkerUsage = 0;
@@ -200,11 +201,18 @@ setInterval(() => {
 	}
 }, 60000); // 每分钟检查一次
 
-// 初始化OCR工作器（优化版本）
-async function initOCRWorker() {
-	if (ocrWorker) {
+// 初始化OCR工作器（支持动态语言选择）
+async function initOCRWorker(language: string = 'chi_sim') {
+	// 如果当前工作器存在且语言匹配，直接返回
+	if (ocrWorker && currentWorkerLanguage === language) {
 		lastWorkerUsage = Date.now();
 		return ocrWorker;
+	}
+	
+	// 如果语言不匹配，清理当前工作器
+	if (ocrWorker && currentWorkerLanguage !== language) {
+		console.log(`Language changed from ${currentWorkerLanguage} to ${language}, recreating worker...`);
+		await cleanupOCRResources();
 	}
 
 	if (ocrWorkerInitializing) {
@@ -222,10 +230,13 @@ async function initOCRWorker() {
 	workerCreationTime = Date.now();
 
 	try {
-		console.log('Initializing OCR worker with optimized settings...');
+		console.log(`Initializing OCR worker for language: ${language}...`);
 		
-		// 创建工作器，支持中英文
-		ocrWorker = await createWorker(['eng', 'chi_sim'], 1, {
+		// 根据选择的语言加载相应模型
+		const languages = language.includes('+') ? language.split('+') : [language];
+		console.log(`Loading languages: ${languages.join(', ')}`);
+		
+		ocrWorker = await createWorker(languages, 1, {
 			logger: m => {
 				if (m.status === 'recognizing text') {
 					console.log(`OCR: ${m.status} - ${(m.progress * 100).toFixed(1)}%`);
@@ -236,15 +247,12 @@ async function initOCRWorker() {
 			}
 		});
 
-		// 设置OCR参数优化
-		await ocrWorker.setParameters({
-			tessedit_pageseg_mode: '6', // 假设一个统一的文本块
-			tessedit_ocr_engine_mode: '1', // 使用神经网络LSTM引擎
-			preserve_interword_spaces: '1', // 保留单词间空格
-			tessedit_char_whitelist: '', // 不限制字符
-		});
+		// 根据语言设置优化参数
+		const parameters = getOCRParameters(language);
+		await ocrWorker.setParameters(parameters);
 		
-		console.log('OCR Worker initialized successfully with optimizations');
+		console.log(`OCR Worker initialized successfully for ${language}`);
+		currentWorkerLanguage = language;
 		lastWorkerUsage = Date.now();
 		return ocrWorker;
 	} catch (error) {
@@ -256,7 +264,90 @@ async function initOCRWorker() {
 	}
 }
 
-// 增强的图片预处理函数（处理ArrayBuffer数据）
+// 根据语言获取优化的OCR参数
+function getOCRParameters(language: string): any {
+	const baseParameters = {
+		tessedit_pageseg_mode: '6', // 假设一个统一的文本块
+		tessedit_ocr_engine_mode: '1', // 使用神经网络LSTM引擎
+		preserve_interword_spaces: '1', // 保留单词间空格
+		tessedit_char_whitelist: '', // 不限制字符
+	};
+
+	if (language === 'chi_sim') {
+		// 中文专用优化参数
+		return {
+			...baseParameters,
+			// 中文识别专用参数
+			tessedit_enable_doc_dict: '0', // 禁用文档字典，避免英文干扰
+			tessedit_enable_bigram_correction: '1', // 启用双字符校正，提高中文准确率
+			tessedit_enable_dict_correction: '0', // 禁用字典校正，避免中文被错误校正为英文
+			classify_enable_learning: '0', // 禁用学习模式，专注识别
+			// 提高中文识别质量的参数
+			textord_heavy_nr: '1', // 启用重噪声处理
+			textord_noise_rejwords: '1', // 启用噪声词汇拒绝
+			textord_noise_rejrows: '1', // 启用噪声行拒绝
+		};
+	} else if (language === 'eng') {
+		// 英文专用优化参数
+		return {
+			...baseParameters,
+			tessedit_enable_doc_dict: '1', // 启用文档字典，提高英文准确率
+			tessedit_enable_bigram_correction: '1', // 启用双字符校正
+			tessedit_enable_dict_correction: '1', // 启用字典校正
+			classify_enable_learning: '1', // 启用学习模式
+		};
+	} else {
+		// 混合语言或其他语言的平衡参数
+		return {
+			...baseParameters,
+			tessedit_enable_doc_dict: '0', // 禁用文档字典，避免语言间干扰
+			tessedit_enable_bigram_correction: '1', // 启用双字符校正
+			tessedit_enable_dict_correction: '0', // 禁用字典校正，避免误校正
+			classify_enable_learning: '0', // 禁用学习模式
+		};
+	}
+}
+
+// 根据语言清理文本
+function cleanTextByLanguage(text: string, language: string): string {
+	if (!text) return '';
+
+	if (language === 'chi_sim') {
+		// 中文专用文本清理
+		return text
+			// 保留中文字符之间的自然间距
+			.replace(/([^\u4e00-\u9fa5\s])\s+([^\u4e00-\u9fa5\s])/g, '$1 $2')  // 保留非中文字符间的空格
+			.replace(/\s+/g, ' ')  // 将多个空白字符替换为单个空格
+			.replace(/^\s+|\s+$/g, '')  // 去除首尾空白
+			.replace(/\n\s*\n/g, '\n')  // 去除多余的空行
+			// 中文特殊处理：去除中文字符间的多余空格
+			.replace(/([a-zA-Z0-9])\s+([a-zA-Z0-9])/g, '$1 $2')  // 保留英文数字间空格
+			.replace(/([a-zA-Z0-9])\s+([\u4e00-\u9fa5])/g, '$1$2')  // 去除英文数字与中文间空格
+			.replace(/([\u4e00-\u9fa5])\s+([a-zA-Z0-9])/g, '$1$2')  // 去除中文与英文数字间空格
+			.replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, '$1$2')  // 去除中文字符间空格
+			.replace(/(.)\1{4,}/g, '$1$1$1'); // 减少重复字符（超过4个的减少到3个）
+	} else if (language === 'eng') {
+		// 英文专用文本清理
+		return text
+			.replace(/\s+/g, ' ')  // 将多个空白字符替换为单个空格
+			.replace(/^\s+|\s+$/g, '')  // 去除首尾空白
+			.replace(/\n\s*\n/g, '\n')  // 去除多余的空行
+			.replace(/([a-zA-Z])\s+([a-zA-Z])/g, '$1 $2')  // 保持英文单词间的空格
+			.replace(/(.)\1{4,}/g, '$1$1$1'); // 减少重复字符
+	} else {
+		// 混合语言的平衡清理
+		return text
+			.replace(/\s+/g, ' ')  // 将多个空白字符替换为单个空格
+			.replace(/^\s+|\s+$/g, '')  // 去除首尾空白
+			.replace(/\n\s*\n/g, '\n')  // 去除多余的空行
+			// 保留英文单词间空格，去除中文字符间多余空格
+			.replace(/([a-zA-Z0-9])\s+([a-zA-Z0-9])/g, '$1 $2')  // 保留英文数字间空格
+			.replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, '$1$2')  // 去除中文字符间空格
+			.replace(/(.)\1{4,}/g, '$1$1$1'); // 减少重复字符
+	}
+}
+
+// 增强的图片预处理函数（处理ArrayBuffer数据，针对中文OCR优化）
 async function preprocessImageData(imageData: ArrayBuffer, fileName: string): Promise<string> {
 	try {
 		// 检查数据有效性
@@ -271,8 +362,8 @@ async function preprocessImageData(imageData: ArrayBuffer, fileName: string): Pr
 			throw new Error(`图片文件过大 (${fileSizeInMB.toFixed(2)}MB)，请使用小于50MB的图片`);
 		}
 		
-		if (fileSizeInMB > 10) {
-			console.warn(`Large image file: ${fileSizeInMB.toFixed(2)}MB, processing may be slow`);
+		if (fileSizeInMB > 5) {
+			console.warn(`较大的图片文件: ${fileSizeInMB.toFixed(2)}MB，建议压缩后再识别以提高速度`);
 		}
 
 		// 检查文件格式
@@ -289,7 +380,7 @@ async function preprocessImageData(imageData: ArrayBuffer, fileName: string): Pr
 			fs.mkdirSync(tempDir, { recursive: true });
 		}
 		
-		const tempFileName = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`;
+		const tempFileName = `chinese_ocr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}${ext}`;
 		const tempFilePath = path.join(tempDir, tempFileName);
 		
 		// 将ArrayBuffer写入临时文件
@@ -306,7 +397,15 @@ async function preprocessImageData(imageData: ArrayBuffer, fileName: string): Pr
 			throw new Error('临时图片文件为空');
 		}
 
-		console.log(`Created temp image file: ${tempFilePath} (${fileSizeInMB.toFixed(2)}MB)`);
+		console.log(`创建中文OCR临时文件: ${tempFilePath} (${fileSizeInMB.toFixed(2)}MB)`);
+		
+		// 如果是PNG格式，直接返回（PNG对中文识别效果最好）
+		if (ext === '.png') {
+			return tempFilePath;
+		}
+		
+		// 对于其他格式，可以考虑转换为PNG以提高中文识别率
+		// 这里暂时直接返回原文件，后续可以添加图片格式转换逻辑
 		return tempFilePath;
 	} catch (error) {
 		console.error('Error preprocessing image data:', error);
@@ -326,10 +425,11 @@ function cleanupTempFile(filePath: string) {
 	}
 }
 
-// 处理OCR识别（优化版本）
+// 处理OCR识别（支持动态语言选择）
 ipcMain.handle('recognize-image', async (event, imageData: ArrayBuffer, fileName: string, options: any = {}) => {
 	const startTime = Date.now();
-	console.log('OCR recognition requested for:', fileName);
+	const language = options.language || 'chi_sim';
+	console.log(`OCR recognition requested for: ${fileName} (Language: ${language})`);
 	
 	const maxRetries = 3;
 	let lastError: Error | null = null;
@@ -353,8 +453,8 @@ ipcMain.handle('recognize-image', async (event, imageData: ArrayBuffer, fileName
 			// 预处理图片数据（创建临时文件）
 			tempFilePath = await preprocessImageData(imageData, fileName);
 			
-			// 初始化OCR工作器（延迟初始化）
-			const worker = await initOCRWorker();
+			// 初始化OCR工作器（支持动态语言选择）
+			const worker = await initOCRWorker(language);
 			
 			// 发送开始识别的进度更新
 			event.sender.send('ocr-progress', { 
@@ -370,7 +470,7 @@ ipcMain.handle('recognize-image', async (event, imageData: ArrayBuffer, fileName
 			});
 
 			const timeoutPromise = new Promise((_, reject) => {
-				setTimeout(() => reject(new Error('OCR识别超时')), 60000); // 60秒超时
+				setTimeout(() => reject(new Error('中文OCR识别超时')), 90000); // 90秒超时，给中文识别更多时间
 			});
 
 			// 执行OCR识别（带超时）
@@ -388,17 +488,10 @@ ipcMain.handle('recognize-image', async (event, imageData: ArrayBuffer, fileName
 				status: 'completed' 
 			});
 
-			// 智能文本清理
+			// 根据语言进行智能文本清理
 			let cleanText = data.text || '';
-			
-			if (cleanText) {
-				cleanText = cleanText
-					.replace(/\s+/g, ' ')  // 将多个空白字符替换为单个空格
-					.replace(/^\s+|\s+$/g, '')  // 去除首尾空白
-					.replace(/\n\s*\n/g, '\n')  // 去除多余的空行
-					.replace(/[^\S\n]+/g, ' ') // 清理除换行外的其他空白字符
-					.replace(/(.)\1{4,}/g, '$1$1$1'); // 减少重复字符（超过4个的减少到3个）
-			}
+			cleanText = cleanTextByLanguage(cleanText, language);
+
 
 			// 计算置信度（处理异常值）
 			let confidence = (data.confidence || 0) / 100;
@@ -817,6 +910,7 @@ async function cleanupOCRResources() {
 			console.log('Cleaning up OCR worker...');
 			await ocrWorker.terminate();
 			ocrWorker = null;
+			currentWorkerLanguage = '';
 			console.log('OCR worker terminated successfully');
 		} catch (error) {
 			console.error('Error terminating OCR worker:', error);
