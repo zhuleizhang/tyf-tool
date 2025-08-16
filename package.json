@@ -7,7 +7,7 @@
     "start": "electron .",
     "build:main": "webpack --config webpack.main.config.js",
     "build:app": "webpack --config webpack.config.js",
-    "build": "npm run build:main && npm run build:app",
+    "build": "rm -rf dist && npm run build:main && npm run build:app",
     "watch": "webpack --watch",
     "dev": "npm run build && electron .",
     "package:win": "rm -rf dist && npm run build && electron-builder --win --x64",

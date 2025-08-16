@@ -27,11 +27,13 @@ interface OCRResult {
 }
 
 // 获取图片尺寸的辅助函数
-const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
+const getImageDimensions = (
+	file: File
+): Promise<{ width: number; height: number }> => {
 	return new Promise((resolve, reject) => {
 		const img = new Image();
 		const url = URL.createObjectURL(file);
-		
+
 		img.onload = () => {
 			URL.revokeObjectURL(url);
 			resolve({
@@ -39,12 +41,12 @@ const getImageDimensions = (file: File): Promise<{ width: number; height: number
 				height: img.naturalHeight,
 			});
 		};
-		
+
 		img.onerror = () => {
 			URL.revokeObjectURL(url);
 			reject(new Error('无法加载图片以获取尺寸'));
 		};
-		
+
 		img.src = url;
 	});
 };
@@ -175,13 +177,13 @@ export const useImageOCR = (
 				const imageDimensions = await getImageDimensions(image.file);
 				const imageWidth = imageDimensions.width;
 				const imageHeight = imageDimensions.height;
-				
+
 				// 根据公式计算识别区域
 				const left = Math.floor(imageWidth * 0.15);
-				const top = Math.floor(imageHeight * 0.70);
-				const width = imageWidth;
+				const top = Math.floor(imageHeight * 0.7);
+				const width = imageWidth - left;
 				const height = imageHeight - top;
-				
+
 				// 构建矩形区域对象
 				const rectangle: Rectangle = {
 					left,
@@ -204,8 +206,15 @@ export const useImageOCR = (
 					preserve_interword_spaces: '1',
 					// 语言参数
 					language: options.language || 'chi_sim',
-					rectangles: [rectangle], // 传递矩形区域数组
+					rectangle: rectangle, // 传递矩形区域数组
 				};
+
+				console.log(
+					image.id,
+					image.file.name,
+					ocrOptions,
+					`${image.file.name} ocrOptions`
+				);
 
 				// 调用主进程OCR服务，传递ArrayBuffer数据、文件名和OCR选项
 				const result = await window.electronAPI?.recognizeImage?.(

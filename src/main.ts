@@ -248,12 +248,16 @@ async function initOCRWorker(language: string = 'chi_sim') {
 			: [language];
 		console.log(`Loading languages: ${languages.join(', ')}`);
 
-		ocrWorker = await createWorker(languages, 1, {
+		ocrWorker = await createWorker(languages, 3, {
+			langPath: path.join(__dirname, 'assets'),
+			gzip: false,
 			logger: (m) => {
 				if (m.status === 'recognizing text') {
 					console.log(
 						`OCR: ${m.status} - ${(m.progress * 100).toFixed(1)}%`
 					);
+				} else {
+					console.log(`OCR log: ${JSON.stringify(m)}`);
 				}
 			},
 			errorHandler: (error: Error) => {
@@ -524,6 +528,7 @@ ipcMain.handle(
 					progress: 10,
 					status: 'starting',
 				});
+				console.log(fileName, options, `${fileName} ocrOptions`);
 
 				// 设置识别超时
 				const recognitionPromise = worker.recognize(tempFilePath, {
