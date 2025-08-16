@@ -729,10 +729,11 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 					const confidence = image.confidence ? `${(image.confidence * 100).toFixed(1)}%` : '未知';
 					
 					// 添加数据行
+					const dataRowFileName = image.file?.name || image.url || `image_${i + 1}`;
 					const dataRow = worksheet.addRow([
 						i + 1,
 						'', // 图片预览列，稍后添加图片
-						image.file.name,
+						dataRowFileName,
 						fileSizeKB > 1024 ? `${(fileSizeKB / 1024).toFixed(1)}MB` : `${fileSizeKB}KB`,
 						getStatusText(image.status),
 						confidence,
@@ -796,9 +797,11 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 							if (arrayBuffer && arrayBuffer.byteLength > 0) {
 								imageBuffer = Buffer.from(arrayBuffer);
 								imageSource = 'provided buffer';
-								console.log(`📦 Using provided buffer for image: ${image.file.name}, size: ${imageBuffer.length} bytes`);
+								const logFileName = image.file?.name || image.url || `image_${i + 1}`;
+								console.log(`📦 Using provided buffer for image: ${logFileName}, size: ${imageBuffer.length} bytes`);
 							} else {
-								console.warn(`⚠️ Invalid buffer for image: ${image.file.name}, byteLength: ${arrayBuffer?.byteLength || 'undefined'}`);
+								const logFileName = image.file?.name || image.url || `image_${i + 1}`;
+								console.warn(`⚠️ Invalid buffer for image: ${logFileName}, byteLength: ${arrayBuffer?.byteLength || 'undefined'}`);
 							}
 						} else {
 							console.warn(`⚠️ No buffer found in imageBuffers for image ID: ${image.id}, available IDs: ${Object.keys(imageBuffers || {}).join(', ')}`);
@@ -838,7 +841,8 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 						
 						// 如果仍然没有获取到图片数据，输出详细的调试信息
 						if (!imageBuffer) {
-							console.error(`❌ Failed to get image buffer for: ${image.file.name}`);
+							const errorFileName = image.file?.name || image.url || `image_${i + 1}`;
+							console.error(`❌ Failed to get image buffer for: ${errorFileName}`);
 							console.error(`   - Image ID: ${image.id}`);
 							console.error(`   - File path: ${image.file?.path || 'undefined'}`);
 							console.error(`   - URL: ${image.url || 'undefined'}`);
@@ -852,8 +856,12 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 						// 验证图片数据并嵌入Excel
 						if (imageBuffer && imageBuffer.length > 0) {
 							try {
+								// 获取文件名，确保不为undefined
+								const fileName = image.file?.name || image.url || `image_${i + 1}`;
+								console.log(`📝 Processing image with fileName: ${fileName}`);
+								
 								// 验证图片数据的有效性
-								const imageExtension = getImageExtension(image.file.name);
+								const imageExtension = getImageExtension(fileName);
 								
 								// 验证图片数据是否为有效的图片格式
 								const isValidImage = validateImageBuffer(imageBuffer, imageExtension);
@@ -861,7 +869,7 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 									throw new Error('图片数据格式无效');
 								}
 								
-								console.log(`Adding image to workbook: ${image.file.name}, size: ${imageBuffer.length} bytes, extension: ${imageExtension}`);
+								console.log(`Adding image to workbook: ${fileName}, size: ${imageBuffer.length} bytes, extension: ${imageExtension}`);
 								
 								const imageId = workbook.addImage({
 									buffer: imageBuffer,
@@ -878,13 +886,14 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 									editAs: 'oneCell'
 								});
 								
-								console.log(`✅ Successfully embedded image: ${image.file.name} at row ${rowIndex} (source: ${imageSource})`);
+								const successFileName = image.file?.name || image.url || `image_${i + 1}`;
+								console.log(`✅ Successfully embedded image: ${successFileName} at row ${rowIndex} (source: ${imageSource})`);
 								
 								// 记录成功的调试信息
 								excelImageDebugger.logImageEmbed({
 									imageId: image.id,
-									fileName: image.file.name,
-									fileSize: image.file.size || 0,
+									fileName: successFileName,
+									fileSize: image.file?.size || 0,
 									bufferSize: imageBuffer.length,
 									extension: imageExtension,
 									isValidBuffer: true,
@@ -893,16 +902,19 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 								});
 							} catch (embedError) {
 								const errorMessage = embedError instanceof Error ? embedError.message : '未知错误';
-								console.error(`❌ Error embedding image ${image.file.name}:`, embedError);
+								const embedErrorFileName = image.file?.name || image.url || `image_${i + 1}`;
+								console.error(`❌ Error embedding image ${embedErrorFileName}:`, embedError);
 								
 								// 记录失败的调试信息
+								const debugFileName = image.file?.name || image.url || `image_${i + 1}`;
+								const debugExtension = getImageExtension(debugFileName);
 								excelImageDebugger.logImageEmbed({
 									imageId: image.id,
-									fileName: image.file.name,
-									fileSize: image.file.size || 0,
+									fileName: debugFileName,
+									fileSize: image.file?.size || 0,
 									bufferSize: imageBuffer.length,
-									extension: getImageExtension(image.file.name),
-									isValidBuffer: validateImageBuffer(imageBuffer, getImageExtension(image.file.name)),
+									extension: debugExtension,
+									isValidBuffer: validateImageBuffer(imageBuffer, debugExtension),
 									embedSuccess: false,
 									embedError: errorMessage,
 									position: { row: i + 2, col: 2 }
@@ -924,19 +936,20 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 								failureReason = '图片数据为空';
 							} else if (!image.file) {
 								failureReason = '文件对象无效';
-							} else if (!image.file.name) {
-								failureReason = '文件名无效';
+							} else if (!image.file.name && !image.url) {
+								failureReason = '文件名和URL均无效';
 							} else if (!imageBuffer) {
 								failureReason = '图片缓冲区创建失败';
 							}
 							
 							// 记录失败的调试信息
+							const failureFileName = image.file?.name || image.url || `image_${i + 1}`;
 							excelImageDebugger.logImageEmbed({
 								imageId: image.id,
-								fileName: image.file?.name || 'unknown',
+								fileName: failureFileName,
 								fileSize: image.file?.size || 0,
 								bufferSize: 0,
-								extension: getImageExtension(image.file?.name || ''),
+								extension: getImageExtension(failureFileName),
 								isValidBuffer: false,
 								embedSuccess: false,
 								embedError: failureReason,
@@ -948,10 +961,12 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 							imageCell.value = `无法嵌入: ${failureReason}`;
 							imageCell.font = { italic: true, color: { argb: 'FF6600' } };
 							imageCell.alignment = { vertical: 'middle', horizontal: 'center' };
-							console.warn(`⚠️ Cannot embed image ${image.file?.name || 'unknown'}: ${failureReason}`);
+							const warnFileName = image.file?.name || image.url || `image_${i + 1}`;
+							console.warn(`⚠️ Cannot embed image ${warnFileName}: ${failureReason}`);
 						}
 					} catch (imageError) {
-						console.error(`Error processing image ${image.file?.name || 'unknown'}:`, imageError);
+						const imageErrorFileName = image.file?.name || image.url || `image_${i + 1}`;
+						console.error(`Error processing image ${imageErrorFileName}:`, imageError);
 						// 在单元格中显示错误信息
 						const imageCell = worksheet.getCell(i + 2, 2);
 						imageCell.value = `处理失败: ${imageError instanceof Error ? imageError.message : '未知错误'}`;
@@ -969,10 +984,11 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 				} catch (error) {
 					console.error(`Error processing image ${i}:`, error);
 					// 即使单张图片失败，也继续处理其他图片
+					const errorRowFileName = image.file?.name || image.url || `image_${i + 1}`;
 					const errorRow = worksheet.addRow([
 						i + 1,
 						'处理失败',
-						image.file.name,
+						errorRowFileName,
 						'未知',
 						'处理失败',
 						'未知',
@@ -1091,7 +1107,13 @@ ipcMain.handle('export-ocr-excel', async (event, data: any[], images: any[], ima
 });
 
 // 获取图片文件扩展名
-function getImageExtension(fileName: string): 'jpeg' | 'png' | 'gif' {
+function getImageExtension(fileName?: string): 'jpeg' | 'png' | 'gif' {
+	// 参数验证
+	if (!fileName || typeof fileName !== 'string') {
+		console.warn(`⚠️ Invalid fileName provided to getImageExtension: ${fileName}`);
+		return 'jpeg'; // 默认返回jpeg
+	}
+	
 	const ext = path.extname(fileName).toLowerCase();
 	switch (ext) {
 		case '.jpg':
@@ -1106,6 +1128,7 @@ function getImageExtension(fileName: string): 'jpeg' | 'png' | 'gif' {
 		case '.webp':
 			return 'jpeg'; // WebP转换为JPEG
 		default:
+			console.warn(`⚠️ Unknown file extension: ${ext}, defaulting to jpeg`);
 			return 'jpeg'; // 默认为jpeg
 	}
 }

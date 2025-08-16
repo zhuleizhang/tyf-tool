@@ -192,6 +192,7 @@ const ExportButton: React.FC<ExportButtonProps> = ({ images }) => {
         ...image,
         file: {
           ...image.file,
+          name: image.file?.name || image.url || `image_${imagesToExport.indexOf(image) + 1}`, // 确保文件名不为空
           path: image.url // 使用url作为文件路径
         }
       }));
