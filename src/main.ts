@@ -13,6 +13,7 @@ import {
 	getMimeType,
 } from './utils/imageProcessor';
 import { excelImageDebugger } from './utils/excelImageDebugger';
+import { OCR_SUPPORTED_FORMATS } from './constants';
 
 // 删除以下两行
 // import { fileURLToPath } from 'url';
@@ -406,23 +407,12 @@ async function preprocessImageData(
 
 		// 检查文件格式
 		const ext = path.extname(fileName).toLowerCase();
-		const supportedFormats = [
-			'.jpg',
-			'.jpeg',
-			'.png',
-			'.gif',
-			'.bmp',
-			'.webp',
-			'.tiff',
-			'.tif',
-		];
-
-		if (!supportedFormats.includes(ext)) {
+		if (!OCR_SUPPORTED_FORMATS.includes(ext)) {
 			throw new Error(`不支持的图片格式: ${ext}`);
 		}
 
-		// 创建临时文件
-		const tempDir = path.join(__dirname, 'temp');
+		// 创建临时文件 - 修改为使用系统临时目录
+		const tempDir = path.join(app.getPath('temp'), 'tyf-tool', 'temp');
 		if (!fs.existsSync(tempDir)) {
 			fs.mkdirSync(tempDir, { recursive: true });
 		}
@@ -570,6 +560,7 @@ ipcMain.handle(
 				confidence = Math.max(0, Math.min(1, confidence)); // 确保在0-1范围内
 
 				const processingTime = Date.now() - startTime;
+				console.log(tempFilePath, `${fileName} tempFilePath`);
 
 				const result = {
 					text: cleanText,
@@ -579,6 +570,7 @@ ipcMain.handle(
 					paragraphs: data.paragraphs?.length || 0,
 					processingTime,
 					rawText: data.text,
+					tempFilePath,
 				};
 
 				console.log(
@@ -1556,7 +1548,7 @@ async function cleanupOCRResources() {
 // 清理临时文件夹
 function cleanupTempDirectory() {
 	try {
-		const tempDir = path.join(__dirname, 'temp');
+		const tempDir = path.join(app.getPath('temp'), 'tyf-tool', 'temp');
 		if (fs.existsSync(tempDir)) {
 			const files = fs.readdirSync(tempDir);
 			files.forEach((file) => {

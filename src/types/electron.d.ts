@@ -13,6 +13,8 @@ export interface ElectronAPI {
 		fileName: string,
 		options?: Partial<RecognizeOptions>
 	) => Promise<{
+		tempFilePath?: string;
+		rawText: string;
 		text: string;
 		confidence: number;
 		words: number;

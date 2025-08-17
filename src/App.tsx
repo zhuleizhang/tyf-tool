@@ -45,8 +45,7 @@ const App: React.FC = () => {
 			</Content>
 
 			<Footer style={{ textAlign: 'center' }}>
-				🍑 的工具箱 ©{new Date().getFullYear()} Created with Zhulei
-				Zhang
+				🍑 的工具箱 ©{new Date().getFullYear()} Zhulei Zhang
 			</Footer>
 		</Layout>
 	);
