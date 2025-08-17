@@ -336,23 +336,21 @@ function cleanTextByLanguage(text: string, language: string): string {
 
 	if (language === 'chi_sim') {
 		// 中文专用文本清理
-		return (
-			text
-				// 保留中文字符之间的自然间距
-				.replace(
-					/([^\u4e00-\u9fa5\s])\s+([^\u4e00-\u9fa5\s])/g,
-					'$1 $2'
-				) // 保留非中文字符间的空格
-				.replace(/\s+/g, ' ') // 将多个空白字符替换为单个空格
-				.replace(/^\s+|\s+$/g, '') // 去除首尾空白
-				.replace(/\n\s*\n/g, '\n') // 去除多余的空行
-				// 中文特殊处理：去除中文字符间的多余空格
-				.replace(/([a-zA-Z0-9])\s+([a-zA-Z0-9])/g, '$1 $2') // 保留英文数字间空格
-				.replace(/([a-zA-Z0-9])\s+([\u4e00-\u9fa5])/g, '$1$2') // 去除英文数字与中文间空格
-				.replace(/([\u4e00-\u9fa5])\s+([a-zA-Z0-9])/g, '$1$2') // 去除中文与英文数字间空格
-				.replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, '$1$2') // 去除中文字符间空格
-				.replace(/(.)\1{4,}/g, '$1$1$1')
-		); // 减少重复字符（超过4个的减少到3个）
+		return text;
+		// // 保留中文字符之间的自然间距
+		// .replace(
+		// 	/([^\u4e00-\u9fa5\s])\s+([^\u4e00-\u9fa5\s])/g,
+		// 	'$1 $2'
+		// ) // 保留非中文字符间的空格
+		// .replace(/\s+/g, ' ') // 将多个空白字符替换为单个空格
+		// .replace(/^\s+|\s+$/g, '') // 去除首尾空白
+		// .replace(/\n\s*\n/g, '\n') // 去除多余的空行
+		// // 中文特殊处理：去除中文字符间的多余空格
+		// .replace(/([a-zA-Z0-9])\s+([a-zA-Z0-9])/g, '$1 $2') // 保留英文数字间空格
+		// .replace(/([a-zA-Z0-9])\s+([\u4e00-\u9fa5])/g, '$1$2') // 去除英文数字与中文间空格
+		// .replace(/([\u4e00-\u9fa5])\s+([a-zA-Z0-9])/g, '$1$2') // 去除中文与英文数字间空格
+		// .replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, '$1$2') // 去除中文字符间空格
+		// .replace(/(.)\1{4,}/g, '$1$1$1') // 减少重复字符（超过4个的减少到3个）
 	} else if (language === 'eng') {
 		// 英文专用文本清理
 		return text
@@ -564,6 +562,8 @@ ipcMain.handle(
 				// 根据语言进行智能文本清理
 				let cleanText = data.text || '';
 				cleanText = cleanTextByLanguage(cleanText, language);
+
+				console.log(data, 'recognize data');
 
 				// 计算置信度（处理异常值）
 				let confidence = (data.confidence || 0) / 100;

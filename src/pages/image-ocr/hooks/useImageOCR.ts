@@ -206,7 +206,7 @@ export const useImageOCR = (
 					preserve_interword_spaces: '1',
 					// 语言参数
 					language: options.language || 'chi_sim',
-					rectangle: rectangle, // 传递矩形区域数组
+					// rectangle: rectangle, // 传递矩形区域数组
 				};
 
 				console.log(
@@ -221,6 +221,12 @@ export const useImageOCR = (
 					imageData,
 					image.file.name,
 					ocrOptions
+				);
+
+				console.log(
+					image.file.name,
+					result,
+					`${image.file.name} result`
 				);
 
 				if (!result || !result.text) {
