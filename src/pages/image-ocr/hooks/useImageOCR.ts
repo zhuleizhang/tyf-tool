@@ -141,10 +141,14 @@ export const useImageOCR = (
 		return () => clearInterval(interval);
 	}, [cleanExpiredCache]);
 
+	// 在recognizeImage函数中添加使用Python服务的选项
 	const recognizeImage = useCallback(
 		async (
 			imageId: string,
-			options: Partial<RecognizeOptions> & { language?: string } = {}
+			options: Partial<RecognizeOptions> & {
+				language?: string;
+				usePythonService?: boolean;
+			} = {}
 		): Promise<OCRResult> => {
 			const image = images.find((img) => img.id === imageId);
 			if (!image) {

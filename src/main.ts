@@ -4,6 +4,8 @@ import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import { createWorker } from 'tesseract.js';
 import * as ExcelJS from 'exceljs';
+import { spawn, ChildProcess } from 'child_process';
+import axios from 'axios';
 import {
 	processImageToBase64,
 	processImagesInBatch,
@@ -1574,6 +1576,110 @@ app.on('before-quit', async () => {
 	await cleanupOCRResources();
 	cleanupTempDirectory();
 });
+
+// Python服务进程引用
+let pythonOCRService: ChildProcess | null = null;
+const PYTHON_SERVICE_PORT = 5000;
+const PYTHON_SERVICE_PATH =
+	'/Users/zhangzhulei/Desktop/projects/tyf-ocr-service/app.py';
+
+// 启动Python OCR服务
+ipcMain.handle('startPythonOCRService', async () => {
+	try {
+		if (pythonOCRService) {
+			return true; // 服务已经在运行
+		}
+
+		// 启动Python服务
+		pythonOCRService = spawn('python3', [PYTHON_SERVICE_PATH]);
+
+		pythonOCRService.stdout?.on('data', (data) => {
+			console.log(`Python OCR Service: ${data}`);
+		});
+
+		pythonOCRService.stderr?.on('data', (data) => {
+			console.error(`Python OCR Service Error: ${data}`);
+		});
+
+		pythonOCRService.on('close', (code) => {
+			console.log(`Python OCR Service exited with code ${code}`);
+			pythonOCRService = null;
+		});
+
+		// 等待服务启动
+		await new Promise((resolve) => setTimeout(resolve, 3000));
+
+		return true;
+	} catch (error) {
+		console.error('Failed to start Python OCR service:', error);
+		return false;
+	}
+});
+
+// 停止Python OCR服务
+ipcMain.handle('stopPythonOCRService', async () => {
+	try {
+		if (pythonOCRService) {
+			pythonOCRService.kill();
+			pythonOCRService = null;
+		}
+		return true;
+	} catch (error) {
+		console.error('Failed to stop Python OCR service:', error);
+		return false;
+	}
+});
+
+// 检查Python OCR服务是否在运行
+ipcMain.handle('isPythonOCRServiceRunning', async () => {
+	try {
+		const response = await axios.get(
+			`http://localhost:${PYTHON_SERVICE_PORT}/`
+		);
+		return response.status === 200;
+	} catch (error) {
+		return false;
+	}
+});
+
+// 使用Python OCR服务进行识别
+ipcMain.handle(
+	'recognizeImageWithPythonService',
+	async (
+		event,
+		imageData: ArrayBuffer,
+		fileName: string,
+		options: any = {}
+	) => {
+		try {
+			// 检查服务是否运行
+			const isRunning = await (
+				global as any
+			).window?.electronAPI?.isPythonOCRServiceRunning?.();
+			if (!isRunning) {
+				await (
+					global as any
+				).window?.electronAPI?.startPythonOCRService?.();
+			}
+
+			// 将ArrayBuffer转换为Base64
+			const buffer = Buffer.from(imageData);
+			const base64Image = buffer.toString('base64');
+
+			// 调用Python服务
+			const response = await axios.post(
+				`http://localhost:${PYTHON_SERVICE_PORT}/recognize`,
+				{ image_base64: base64Image },
+				{ timeout: 120000 } // 2分钟超时
+			);
+
+			return response.data;
+		} catch (error) {
+			console.error('Error calling Python OCR service:', error);
+			throw error;
+		}
+	}
+);
 
 // 处理OCR工作器重置
 ipcMain.handle('reset-ocr-worker', async () => {

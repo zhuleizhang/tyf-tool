@@ -74,6 +74,7 @@
     "@types/file-saver": "^2.0.7",
     "@types/sharp": "^0.31.1",
     "antd": "^5.26.0",
+    "axios": "^1.11.0",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "heic2any": "^0.0.4",
