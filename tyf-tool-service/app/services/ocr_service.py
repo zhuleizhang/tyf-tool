@@ -43,9 +43,9 @@ class OCRService:
                 lang_list=settings.OCR_LANGUAGES, 
                 gpu=settings.USE_GPU,
                 model_storage_directory=settings.MODEL_DIR,
-                download_enabled=False,
-                detector=True,           # 使用已有的检测模型
-                recognizer=True          # 使用已有的识别模型
+                # download_enabled=False,
+                # detector=True,           # 使用已有的检测模型
+                # recognizer=True          # 使用已有的识别模型
             )
         return cls._instance
     

@@ -6,7 +6,7 @@ from typing import List
 MODEL_DIR = os.path.abspath("/Users/bytedance/Desktop/other/tyf-tool/tyf-tool-service/easyocr_models")
 
 # 设置环境变量 - 在导入其他模块前
-os.environ['EASYOCR_DOWNLOAD_DIR'] = MODEL_DIR
+# os.environ['EASYOCR_DOWNLOAD_DIR'] = MODEL_DIR
 
 class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"

@@ -8,9 +8,9 @@ MODEL_DIR = os.path.join(os.getcwd(), 'easyocr_models')
 
 # 确保在所有导入前设置环境变量
 # os.environ['EASYOCR_DOWNLOAD_DIR'] = os.path.join(os.getcwd(), 'easyocr_models')
-os.environ['EASYOCR_DOWNLOAD_DIR'] = MODEL_DIR
-os.environ['EASYOCR_MODULE_PATH'] = MODEL_DIR
-os.environ['EASYOCR_PATH'] = MODEL_DIR
+# os.environ['EASYOCR_DOWNLOAD_DIR'] = MODEL_DIR
+# os.environ['EASYOCR_MODULE_PATH'] = MODEL_DIR
+# os.environ['EASYOCR_PATH'] = MODEL_DIR
 
 
 print(f"当前模型目录: {MODEL_DIR}")
