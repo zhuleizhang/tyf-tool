@@ -1,7 +1,7 @@
 easyocr==1.7.0
 fastapi==0.116.1
-numpy==2.3.2
-Pillow==11.3.0
+numpy==2.0.2  # 改为当前可用的最高版本
+Pillow==10.2.0  # 降级到稳定版本
 pydantic==2.11.7
 pydantic_settings==2.10.1
 uvicorn==0.35.0
