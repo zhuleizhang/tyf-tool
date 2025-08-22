@@ -1578,21 +1578,69 @@ app.on('before-quit', async () => {
 // Python服务进程引用
 let pythonOCRService: ChildProcess | null = null;
 const PYTHON_SERVICE_PORT = 8000;
-// 使用相对路径指向打包后的Python服务
 
-// 根据环境选择Python服务路径
-const PYTHON_SERVICE_PATH =
-	process.env.NODE_ENV === 'development'
-		? path.join(
-				__dirname,
-				'..',
-				'tyf-tool-service',
-				'dist',
-				'tyf_tool_service'
-		  ) // 开发环境路径
-		: path.join(app.getAppPath(), 'service', 'tyf_tool_service'); // 生产环境路径
-// 或者如果是独立可执行文件
-// const PYTHON_SERVICE_PATH = path.join(app.getAppPath(), 'tyf-tool-service', 'dist', 'tyf-tool-service');
+// 检测系统类型和架构
+const isWindows = process.platform === 'win32';
+const isMac = process.platform === 'darwin';
+const isArm64 = process.arch === 'arm64';
+
+console.log('系统类型:', process.platform);
+console.log('架构:', process.arch);
+
+console.log(app.getAppPath());
+// // 根据环境选择Python服务路径
+// const PYTHON_SERVICE_PATH =
+// 	process.env.NODE_ENV === 'development'
+// 		? path.join(
+// 				__dirname,
+// 				'..',
+// 				'tyf-tool-service',
+// 				'dist',
+// 				'tyf_tool_service'
+// 		  ) // 开发环境路径
+// 		: path.join(app.getAppPath(), 'service', 'tyf_tool_service'); // 生产环境路径
+// // 或者如果是独立可执行文件
+// // const PYTHON_SERVICE_PATH = path.join(app.getAppPath(), 'tyf-tool-service', 'dist', 'tyf-tool-service');
+
+// 根据系统和架构选择Python服务路径
+const getPythonServicePath = () => {
+	// 开发环境路径
+	if (process.env.NODE_ENV === 'development') {
+		// const basePath = path.join(
+		// 	__dirname,
+		// 	'..',
+		// 	'tyf-tool-service',
+		// 	'dist',
+		// 	'service'
+		// );
+
+		const basePath = path.join(app.getAppPath(), 'dist', 'service');
+
+		if (isWindows) {
+			return path.join(basePath, 'tyf_tool_service.exe');
+		} else if (isMac) {
+			if (isArm64) {
+				return path.join(basePath, 'tyf_tool_service');
+			} else {
+				return path.join(basePath, 'tyf_tool_service');
+			}
+		}
+	}
+	// 生产环境路径
+	else {
+		const basePath = path.join(app.getAppPath(), 'service');
+
+		if (isWindows) {
+			return path.join(basePath, 'windows', 'tyf_tool_service.exe');
+		} else if (isMac) {
+			if (isArm64) {
+				return path.join(basePath, 'mac-arm', 'tyf_tool_service');
+			} else {
+				return path.join(basePath, 'mac-intel', 'tyf_tool_service');
+			}
+		}
+	}
+};
 
 // 启动Python OCR服务
 ipcMain.handle('startPythonService', async () => {
@@ -1601,13 +1649,12 @@ ipcMain.handle('startPythonService', async () => {
 			return true; // 服务已经在运行
 		}
 
-		// 根据环境选择启动方式
-		if (process.env.NODE_ENV === 'development') {
-			// pythonOCRService = spawn('python', [PYTHON_SERVICE_PATH]);
-			pythonOCRService = spawn(PYTHON_SERVICE_PATH, []);
-		} else {
-			pythonOCRService = spawn(PYTHON_SERVICE_PATH, []);
-		}
+		// 获取适合当前系统和架构的可执行文件路径
+		const servicePath = getPythonServicePath();
+		console.log(`Starting Python service from: ${servicePath}`);
+
+		// 启动服务
+		pythonOCRService = spawn(servicePath, []);
 
 		pythonOCRService.stdout?.on('data', (data) => {
 			console.log(`Python OCR Service: ${data}`);
@@ -1622,6 +1669,11 @@ ipcMain.handle('startPythonService', async () => {
 			pythonOCRService = null;
 		});
 
+		// 在Windows系统上，有时需要等待一段时间确保服务正常启动
+		if (isWindows) {
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+		}
+
 		return true;
 	} catch (error) {
 		console.error('Failed to start Python OCR service:', error);
@@ -1633,7 +1685,22 @@ ipcMain.handle('startPythonService', async () => {
 ipcMain.handle('stopPythonService', async () => {
 	try {
 		if (pythonOCRService) {
-			pythonOCRService.kill();
+			// Windows上可能需要使用taskkill强制结束进程
+			if (isWindows) {
+				// 首先尝试正常结束进程
+				pythonOCRService.kill();
+
+				// 给一点时间让进程正常退出
+				await new Promise((resolve) => setTimeout(resolve, 500));
+
+				// 如果进程仍在运行，可以考虑使用更强力的方法
+				// 注意：这部分可能需要额外的系统权限
+				// 如果你需要这部分功能，可以使用Node的child_process.exec执行taskkill命令
+			} else {
+				// Mac和Linux可以使用SIGTERM信号
+				pythonOCRService.kill('SIGTERM');
+			}
+
 			pythonOCRService = null;
 		}
 		return true;

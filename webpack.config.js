@@ -65,7 +65,14 @@ module.exports = {
 					to: path.resolve(__dirname, 'dist/assets'),
 				},
 				{
-					from: path.resolve(__dirname, 'tyf-tool-service/dist'),
+					from: path.resolve(
+						__dirname,
+						'tyf-tool-service/easyocr_models'
+					),
+					to: path.resolve(__dirname, 'dist/service/easyocr_models'),
+				},
+				{
+					from: path.resolve(__dirname, 'service_build'),
 					to: path.resolve(__dirname, 'dist/service'),
 				},
 			],
