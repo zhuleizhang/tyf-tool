@@ -1,19 +1,12 @@
-import os
 import uvicorn
 import signal
 import sys
 
-# 使用绝对路径
-MODEL_DIR = os.path.join(os.getcwd(), 'easyocr_models')
+from app.core.config import settings
+from app.main import app  # 直接导入app对象
 
-# 确保在所有导入前设置环境变量
-# os.environ['EASYOCR_DOWNLOAD_DIR'] = os.path.join(os.getcwd(), 'easyocr_models')
-# os.environ['EASYOCR_DOWNLOAD_DIR'] = MODEL_DIR
-# os.environ['EASYOCR_MODULE_PATH'] = MODEL_DIR
-# os.environ['EASYOCR_PATH'] = MODEL_DIR
-
-
-print(f"当前模型目录: {MODEL_DIR}")
+print(f"模型目录设置: {settings.MODEL_DIR}")
+print("settings 配置: ", settings.model_dump())
 
 def handle_exit(sig, frame):
     print("正在关闭服务...")
@@ -23,4 +16,5 @@ signal.signal(signal.SIGINT, handle_exit)
 signal.signal(signal.SIGTERM, handle_exit)
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    # 直接使用导入的app对象
+    uvicorn.run(app, host="0.0.0.0", port=8000)
