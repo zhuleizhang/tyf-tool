@@ -18,10 +18,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: 设置Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.9"
           cache: "pip"
@@ -54,7 +54,7 @@ jobs:
           cp -f dist/tyf_tool_service ../dist/mac-universal/
 
       - name: 上传Mac构建结果
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4 # 从v3更新到v4
         with:
           name: mac-binaries
           path: dist/mac-*
@@ -65,10 +65,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: 设置Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.9"
           cache: "pip"
@@ -87,7 +87,7 @@ jobs:
           copy dist\tyf_tool_service.exe ..\dist\windows\
 
       - name: 上传Windows构建结果
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4 # 从v3更新到v4
         with:
           name: windows-binaries
           path: dist/windows
@@ -101,13 +101,13 @@ jobs:
   #   if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
   #   steps:
   #     - name: 检出代码
-  #       uses: actions/checkout@v3
-
+  #       uses: actions/checkout@v4
+  #
   #     - name: 下载所有构建结果
-  #       uses: actions/download-artifact@v3
+  #       uses: actions/download-artifact@v4  # 从v3更新到v4
   #       with:
   #         path: all-artifacts
-
+  #
   #     - name: 打包所有构建结果
   #       run: |
   #         cd all-artifacts
@@ -115,7 +115,7 @@ jobs:
   #         zip -r ../tyf-tool-service-mac-arm.zip mac-binaries/mac-arm
   #         zip -r ../tyf-tool-service-mac-universal.zip mac-binaries/mac-universal
   #         zip -r ../tyf-tool-service-windows.zip windows-binaries
-
+  #
   #     - name: 创建发布版本
   #       uses: softprops/action-gh-release@v1
   #       with:
