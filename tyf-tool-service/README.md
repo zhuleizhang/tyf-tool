@@ -78,3 +78,22 @@ curl -X POST "http://localhost:8000/api/v1/recognize" \
 
 -   Swagger UI: http://localhost:8000/docs
 -   ReDoc: http://localhost:8000/redoc
+
+## 打包
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --name tyf_tool_service main.py
+```
+
+OR
+
+```bash
+pyinstaller tyf_tool_service.spec
+```
+
+## 运行
+
+```bash
+./dist/tyf_tool_service
+```
