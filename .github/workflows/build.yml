@@ -35,21 +35,27 @@ jobs:
       - name: 构建Mac Intel版本
         run: |
           cd tyf-tool-service
-          PYTHONHASHSEED=1 pyinstaller --target-architecture x86_64 tyf_tool_service.spec
+          # 修改spec文件中的target_arch
+          sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
+          PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-intel
           cp -f dist/tyf_tool_service ../dist/mac-intel/
 
       - name: 构建Mac ARM版本
         run: |
           cd tyf-tool-service
-          PYTHONHASHSEED=1 pyinstaller --target-architecture arm64 tyf_tool_service.spec
+          # 修改spec文件中的target_arch
+          sed -i '' 's/target_arch="x86_64"/target_arch="arm64"/' tyf_tool_service.spec
+          PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-arm
           cp -f dist/tyf_tool_service ../dist/mac-arm/
 
       - name: 构建Mac Universal版本
         run: |
           cd tyf-tool-service
-          PYTHONHASHSEED=1 pyinstaller --target-architecture universal2 tyf_tool_service.spec
+          # 修改spec文件中的target_arch
+          sed -i '' 's/target_arch="arm64"/target_arch="universal2"/' tyf_tool_service.spec
+          PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-universal
           cp -f dist/tyf_tool_service ../dist/mac-universal/
 
