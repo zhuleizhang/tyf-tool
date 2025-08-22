@@ -5,6 +5,7 @@ module.exports = {
 	mode: 'development',
 	entry: './src/App.tsx',
 	target: 'electron-renderer',
+	devtool: 'source-map',
 	module: {
 		rules: [
 			{
@@ -32,6 +33,10 @@ module.exports = {
 	},
 	resolve: {
 		extensions: ['.tsx', '.ts', '.js'],
+		alias: {
+			// 添加这个别名配置
+			'@': path.resolve(__dirname, 'src'),
+		},
 	},
 	output: {
 		filename: 'App.js',

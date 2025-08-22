@@ -3,6 +3,9 @@ import { message } from 'antd';
 import type { ImageData } from '../index';
 import { RecognizeOptions, Rectangle } from 'tesseract.js';
 
+import { recognizeImage as recognizeImageApi } from '@/services/ocr/api';
+import { fileToBase64 } from '@/utils/imageProcessor';
+
 interface OCRProgress {
 	imagePath: string;
 	progress: number;
@@ -219,13 +222,17 @@ export const useImageOCR = (
 					ocrOptions,
 					`${image.file.name} ocrOptions`
 				);
-
+				// 然后在你的代码中使用：
+				const base64String = await fileToBase64(image.file);
+				const result = await recognizeImageApi({
+					image_base64: base64String,
+				});
 				// 调用主进程OCR服务，传递ArrayBuffer数据、文件名和OCR选项
-				const result = await window.electronAPI?.recognizeImage?.(
-					imageData,
-					image.file.name,
-					ocrOptions
-				);
+				// const result = await window.electronAPI?.recognizeImage?.(
+				// 	imageData,
+				// 	image.file.name,
+				// 	ocrOptions
+				// );
 
 				console.log(
 					image.file.name,

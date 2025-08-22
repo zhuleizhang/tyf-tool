@@ -6,14 +6,7 @@ import { createWorker } from 'tesseract.js';
 import * as ExcelJS from 'exceljs';
 import { spawn, ChildProcess } from 'child_process';
 import axios from 'axios';
-import {
-	processImageToBase64,
-	processImagesInBatch,
-	formatFileSize,
-	generateImageThumbnailInfo,
-	isImageTooLarge,
-	getMimeType,
-} from './utils/imageProcessor';
+import { formatFileSize } from './utils/imageProcessor';
 import { excelImageDebugger } from './utils/excelImageDebugger';
 import { OCR_SUPPORTED_FORMATS } from './constants';
 
