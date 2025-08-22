@@ -1,5 +1,5 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
-import * as path from 'path';
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const path = require('path');
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import { createWorker } from 'tesseract.js';
@@ -1566,25 +1566,48 @@ function cleanupTempDirectory() {
 
 // 应用退出时清理资源
 app.on('before-quit', async () => {
+	console.log('应用退出，清理资源');
 	await cleanupOCRResources();
 	cleanupTempDirectory();
+	if (pythonOCRService) {
+		console.log('清理Python服务');
+		pythonOCRService.kill();
+		pythonOCRService = null;
+	}
 });
-
 // Python服务进程引用
 let pythonOCRService: ChildProcess | null = null;
-const PYTHON_SERVICE_PORT = 5000;
+const PYTHON_SERVICE_PORT = 8000;
+// 使用相对路径指向打包后的Python服务
+
+// 根据环境选择Python服务路径
 const PYTHON_SERVICE_PATH =
-	'/Users/zhangzhulei/Desktop/projects/tyf-ocr-service/app.py';
+	process.env.NODE_ENV === 'development'
+		? path.join(
+				__dirname,
+				'..',
+				'tyf-tool-service',
+				'dist',
+				'tyf_tool_service'
+		  ) // 开发环境路径
+		: path.join(app.getAppPath(), 'service', 'tyf_tool_service'); // 生产环境路径
+// 或者如果是独立可执行文件
+// const PYTHON_SERVICE_PATH = path.join(app.getAppPath(), 'tyf-tool-service', 'dist', 'tyf-tool-service');
 
 // 启动Python OCR服务
-ipcMain.handle('startPythonOCRService', async () => {
+ipcMain.handle('startPythonService', async () => {
 	try {
 		if (pythonOCRService) {
 			return true; // 服务已经在运行
 		}
 
-		// 启动Python服务
-		pythonOCRService = spawn('python3', [PYTHON_SERVICE_PATH]);
+		// 根据环境选择启动方式
+		if (process.env.NODE_ENV === 'development') {
+			// pythonOCRService = spawn('python', [PYTHON_SERVICE_PATH]);
+			pythonOCRService = spawn(PYTHON_SERVICE_PATH, []);
+		} else {
+			pythonOCRService = spawn(PYTHON_SERVICE_PATH, []);
+		}
 
 		pythonOCRService.stdout?.on('data', (data) => {
 			console.log(`Python OCR Service: ${data}`);
@@ -1599,9 +1622,6 @@ ipcMain.handle('startPythonOCRService', async () => {
 			pythonOCRService = null;
 		});
 
-		// 等待服务启动
-		await new Promise((resolve) => setTimeout(resolve, 3000));
-
 		return true;
 	} catch (error) {
 		console.error('Failed to start Python OCR service:', error);
@@ -1610,7 +1630,7 @@ ipcMain.handle('startPythonOCRService', async () => {
 });
 
 // 停止Python OCR服务
-ipcMain.handle('stopPythonOCRService', async () => {
+ipcMain.handle('stopPythonService', async () => {
 	try {
 		if (pythonOCRService) {
 			pythonOCRService.kill();
@@ -1624,10 +1644,10 @@ ipcMain.handle('stopPythonOCRService', async () => {
 });
 
 // 检查Python OCR服务是否在运行
-ipcMain.handle('isPythonOCRServiceRunning', async () => {
+ipcMain.handle('isPythonServiceRunning', async () => {
 	try {
 		const response = await axios.get(
-			`http://localhost:${PYTHON_SERVICE_PORT}/`
+			`http://localhost:${PYTHON_SERVICE_PORT}/docs`
 		);
 		return response.status === 200;
 	} catch (error) {
@@ -1648,11 +1668,11 @@ ipcMain.handle(
 			// 检查服务是否运行
 			const isRunning = await (
 				global as any
-			).window?.electronAPI?.isPythonOCRServiceRunning?.();
+			).window?.electronAPI?.isPythonServiceRunning?.();
 			if (!isRunning) {
 				await (
 					global as any
-				).window?.electronAPI?.startPythonOCRService?.();
+				).window?.electronAPI?.startPythonService?.();
 			}
 
 			// 将ArrayBuffer转换为Base64

@@ -14,6 +14,7 @@ import {
 	Tooltip,
 	Alert,
 	Spin,
+	Tag,
 } from 'antd';
 import {
 	UploadOutlined,
@@ -28,6 +29,7 @@ import {
 	ClockCircleOutlined,
 	CheckCircleOutlined,
 	ExclamationCircleOutlined,
+	CloudServerOutlined,
 } from '@ant-design/icons';
 import ImageUpload from './components/ImageUpload';
 import ImageTable from './components/ImageTable';
@@ -54,7 +56,199 @@ export interface ImageData {
 	confidence?: number;
 }
 
-const ImageOCR: React.FC = () => {
+// 服务包装器组件，处理服务初始化和状态监控
+const ServiceWrapper: React.FC<{ children: React.ReactNode }> = ({
+	children,
+}) => {
+	const [loading, setLoading] = useState(true);
+	const [serviceRunning, setServiceRunning] = useState(false);
+	const [serviceStarting, setServiceStarting] = useState(false);
+	const [serviceStopping, setServiceStopping] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	// 检查服务状态
+	const checkServiceStatus = useCallback(async () => {
+		try {
+			const isRunning =
+				await window.electronAPI?.isPythonServiceRunning();
+			console.log('服务状态检查结果:', isRunning);
+			setServiceRunning(!!isRunning);
+
+			// 如果服务运行中且页面还在loading状态，则取消loading
+			if (isRunning && loading) {
+				setLoading(false);
+				console.log('Python服务已就绪');
+			}
+
+			return !!isRunning;
+		} catch (err) {
+			console.error('检查服务状态失败', err);
+			setServiceRunning(false);
+			return false;
+		}
+	}, [loading]);
+
+	// 启动Python服务
+	const startService = useCallback(async () => {
+		try {
+			setServiceStarting(true);
+			setError(null);
+			const res = await window.electronAPI?.startPythonService();
+			if (res) {
+				console.log('Python服务启动成功');
+				// 启动服务成功后开始轮询检查服务状态
+				await checkServiceStatus();
+			} else {
+				console.log('Python服务启动失败');
+				setError('服务启动失败');
+			}
+		} catch (err) {
+			console.log('Python服务启动错误', err);
+			setError(
+				`服务启动错误: ${
+					err instanceof Error ? err.message : String(err)
+				}`
+			);
+		} finally {
+			setServiceStarting(false);
+		}
+	}, [checkServiceStatus]);
+
+	// 停止Python服务
+	const stopService = useCallback(async () => {
+		try {
+			setServiceStopping(true);
+			setError(null);
+			const res = await window.electronAPI?.stopPythonService();
+			if (res) {
+				console.log('Python服务停止成功');
+				setServiceRunning(false);
+				return true;
+			} else {
+				console.log('Python服务停止失败');
+				setError('服务停止失败');
+				return false;
+			}
+		} catch (err) {
+			console.log('Python服务停止错误', err);
+			setError(
+				`服务停止错误: ${
+					err instanceof Error ? err.message : String(err)
+				}`
+			);
+			return false;
+		} finally {
+			setServiceStopping(false);
+		}
+	}, []);
+
+	// 重启服务
+	const restartService = useCallback(async () => {
+		// 先停止服务
+		const stopSuccess = await stopService();
+		setLoading(true);
+		if (stopSuccess) {
+			// 停止成功后，等待短暂延迟再启动
+			setTimeout(() => {
+				startService();
+			}, 1000); // 等待1秒后启动
+		} else {
+			setError('服务重启失败：无法停止当前服务');
+		}
+	}, [stopService, startService]);
+
+	// 初始化：首先检查服务状态，如果未运行则启动
+	useEffect(() => {
+		const initialize = async () => {
+			// 首先检查服务是否已经在运行
+			const isRunning = await checkServiceStatus();
+
+			// 如果服务未运行，则启动服务
+			if (!isRunning) {
+				await startService();
+			} else {
+				// 服务已运行，直接取消loading状态
+				setLoading(false);
+			}
+		};
+
+		initialize();
+	}, [checkServiceStatus, startService]);
+
+	// 定期检查服务状态
+	useEffect(() => {
+		const intervalId = setInterval(checkServiceStatus, 3000); // 每3秒轮询一次
+		return () => clearInterval(intervalId);
+	}, [checkServiceStatus]);
+
+	// 如果正在加载，显示加载状态
+	if (loading) {
+		return (
+			<div
+				style={{
+					display: 'flex',
+					flexDirection: 'column',
+					alignItems: 'center',
+					justifyContent: 'center',
+					height: '80vh',
+				}}
+			>
+				<Spin size="large" />
+				<div style={{ marginTop: 20 }}>
+					<Text>
+						{serviceStarting
+							? '正在启动Python服务，请稍候...'
+							: serviceStopping
+							? '正在停止Python服务，请稍候...'
+							: '服务启动中，请稍候...'}
+					</Text>
+				</div>
+				{error && (
+					<Alert
+						type="error"
+						message="服务异常"
+						description={error}
+						style={{ marginTop: 20, maxWidth: 500 }}
+						action={
+							<Button
+								type="primary"
+								danger
+								onClick={restartService}
+								disabled={serviceStarting || serviceStopping}
+							>
+								重启服务
+							</Button>
+						}
+					/>
+				)}
+			</div>
+		);
+	}
+
+	// 渲染子组件，并传递服务状态和重启方法
+	return (
+		<div className="service-wrapper">
+			{React.cloneElement(children as React.ReactElement, {
+				serviceRunning,
+				restartService,
+				serviceStarting,
+				serviceStopping,
+			})}
+		</div>
+	);
+};
+
+const ImageOCR: React.FC<{
+	serviceRunning?: boolean;
+	restartService?: () => Promise<void>;
+	serviceStarting?: boolean;
+	serviceStopping?: boolean;
+}> = ({
+	serviceRunning = false,
+	restartService = async () => {},
+	serviceStarting = false,
+	serviceStopping = false,
+}) => {
 	const [showStats, setShowStats] = useState(true);
 	const [lastActivity, setLastActivity] = useState<string>('');
 	const [selectedLanguage, setSelectedLanguage] = useState<string>('chi_sim'); // 默认中文模式
@@ -84,47 +278,6 @@ const ImageOCR: React.FC = () => {
 
 	// 计算统计信息
 	const stats = useMemo(() => getStats(), [getStats]);
-
-	// 快捷键支持
-	// useEffect(() => {
-	//   const handleKeyPress = (event: KeyboardEvent) => {
-	//     // Ctrl/Cmd + U: 上传图片
-	//     if ((event.ctrlKey || event.metaKey) && event.key === 'u') {
-	//       event.preventDefault();
-	//       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-	//       fileInput?.click();
-	//       setLastActivity('快捷键上传图片');
-	//     }
-
-	//     // Ctrl/Cmd + R: 批量识别
-	//     if ((event.ctrlKey || event.metaKey) && event.key === 'r' && !isProcessing) {
-	//       event.preventDefault();
-	//       handleRecognizeAll();
-	//       setLastActivity('快捷键批量识别');
-	//     }
-
-	//     // Ctrl/Cmd + E: 导出Excel
-	//     if ((event.ctrlKey || event.metaKey) && event.key === 'e') {
-	//       event.preventDefault();
-	//       // 触发导出功能
-	//       if (images.length > 0) {
-	//         // 这里可以调用导出函数，暂时只显示提示
-	//         message.info('请点击导出Excel按钮进行导出');
-	//       }
-	//       setLastActivity('快捷键导出Excel');
-	//     }
-
-	//     // Escape: 取消识别
-	//     if (event.key === 'Escape' && isProcessing) {
-	//       event.preventDefault();
-	//       handleCancelRecognition();
-	//       setLastActivity('快捷键取消识别');
-	//     }
-	//   };
-
-	//   document.addEventListener('keydown', handleKeyPress);
-	//   return () => document.removeEventListener('keydown', handleKeyPress);
-	// }, [isProcessing]);
 
 	const handleImageUpload = useCallback(
 		(files: File[]) => {
@@ -218,34 +371,91 @@ const ImageOCR: React.FC = () => {
 		setLastActivity(`切换到${getLanguageDisplayName(language)}识别模式`);
 	}, []);
 
+	// 服务状态标签
+	const ServiceStatusTag = () => {
+		if (serviceStarting) {
+			return (
+				<Tag icon={<Spin size="small" />} color="processing">
+					服务启动中
+				</Tag>
+			);
+		}
+
+		if (serviceStopping) {
+			return (
+				<Tag icon={<Spin size="small" />} color="warning">
+					服务停止中
+				</Tag>
+			);
+		}
+
+		return serviceRunning ? (
+			<Tag color="success" icon={<CloudServerOutlined />}>
+				服务正常
+			</Tag>
+		) : (
+			<Tooltip title="点击重启服务">
+				<Tag
+					color="error"
+					icon={<ExclamationCircleOutlined />}
+					style={{ cursor: 'pointer' }}
+					onClick={() => restartService()}
+				>
+					服务异常
+				</Tag>
+			</Tooltip>
+		);
+	};
+
 	return (
 		<Card>
 			<div style={{ marginBottom: '24px' }}>
-				<div
-					style={{
-						display: 'flex',
-						justifyContent: 'space-between',
-						alignItems: 'flex-start',
-					}}
-				>
-					<div>
+				<div>
+					<div
+						style={{
+							display: 'flex',
+							justifyContent: 'space-between',
+							alignItems: 'center',
+						}}
+					>
 						<Title level={4}>图片文字识别</Title>
+						<div>
+							<ServiceStatusTag />
+						</div>
+					</div>
+					<div>
 						<Text type="secondary">
 							支持上传多张图片，自动识别图片中的文字内容，并导出为Excel文件
 						</Text>
-						{lastActivity && (
-							<div style={{ marginTop: '8px' }}>
-								<Text
-									type="success"
-									style={{ fontSize: '12px' }}
-								>
-									<ClockCircleOutlined /> 最近操作：
-									{lastActivity}
-								</Text>
-							</div>
-						)}
 					</div>
-					{/* <KeyboardShortcuts /> */}
+					{!serviceRunning && (
+						<Alert
+							type="warning"
+							message="服务未运行，识别功能将不可用"
+							action={
+								<Button
+									type="primary"
+									size="small"
+									onClick={() => restartService()}
+									disabled={
+										serviceStarting || serviceStopping
+									}
+									loading={serviceStarting}
+								>
+									重新启动服务
+								</Button>
+							}
+							style={{ marginTop: 8 }}
+						/>
+					)}
+					{lastActivity && (
+						<div style={{ marginTop: '8px' }}>
+							<Text type="success" style={{ fontSize: '12px' }}>
+								<ClockCircleOutlined /> 最近操作：
+								{lastActivity}
+							</Text>
+						</div>
+					)}
 				</div>
 			</div>
 
@@ -355,10 +565,10 @@ const ImageOCR: React.FC = () => {
 			)}
 
 			{/* 语言选择区域 */}
-			<LanguageSelector
+			{/* <LanguageSelector
 				selectedLanguage={selectedLanguage}
 				onLanguageChange={handleLanguageChange}
-			/>
+			/> */}
 
 			{/* 图片上传区域 */}
 			<Card
@@ -397,21 +607,21 @@ const ImageOCR: React.FC = () => {
 
 					<ExportButton images={images} />
 
-					<Button
+					{/* <Button
 						icon={<ReloadOutlined />}
 						onClick={handleResetOCR}
 						title="重置OCR引擎"
 					>
 						重置OCR
-					</Button>
+					</Button> */}
 
-					<Button
+					{/* <Button
 						icon={<DeleteOutlined />}
 						onClick={handleClearCache}
 						title="清理OCR缓存"
 					>
 						清理缓存
-					</Button>
+					</Button> */}
 
 					<Popconfirm
 						title="确定要清空所有数据吗？"
@@ -548,4 +758,13 @@ const ImageOCR: React.FC = () => {
 	);
 };
 
-export default ImageOCR;
+// 包装后的导出组件
+const WrappedImageOCR: React.FC = () => {
+	return (
+		<ServiceWrapper>
+			<ImageOCR />
+		</ServiceWrapper>
+	);
+};
+
+export default WrappedImageOCR;

@@ -64,6 +64,10 @@ module.exports = {
 					from: path.resolve(__dirname, 'src/assets'),
 					to: path.resolve(__dirname, 'dist/assets'),
 				},
+				{
+					from: path.resolve(__dirname, 'tyf-tool-service/dist'),
+					to: path.resolve(__dirname, 'dist/service'),
+				},
 			],
 		}),
 	],

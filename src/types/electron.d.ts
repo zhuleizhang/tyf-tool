@@ -41,7 +41,7 @@ export interface ElectronAPI {
 	// OCR进度监听（保持向后兼容）
 	onOCRProgress: (callback: (data: any) => void) => () => void;
 	onBatchOCRProgress: (callback: (data: any) => void) => () => void;
-	onExportProgress: (callback: (data: any) => void) => () => void;
+	// onExportProgress: (callback: (data: any) => void) => () => void;
 
 	// 添加调用Python OCR服务的API
 	recognizeImageWithPythonService: (
@@ -58,9 +58,9 @@ export interface ElectronAPI {
 	} | null>;
 
 	// 控制Python服务的API
-	startPythonOCRService: () => Promise<boolean>;
-	stopPythonOCRService: () => Promise<boolean>;
-	isPythonOCRServiceRunning: () => Promise<boolean>;
+	startPythonService: () => Promise<boolean>;
+	stopPythonService: () => Promise<boolean>;
+	isPythonServiceRunning: () => Promise<boolean>;
 }
 
 declare global {
