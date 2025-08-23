@@ -1645,43 +1645,14 @@ console.log('系统类型:', process.platform);
 console.log('架构:', process.arch);
 
 console.log(app.getAppPath());
-// // 根据环境选择Python服务路径
-// const PYTHON_SERVICE_PATH =
-// 	process.env.NODE_ENV === 'development'
-// 		? path.join(
-// 				__dirname,
-// 				'..',
-// 				'tyf-tool-service',
-// 				'dist',
-// 				'tyf_tool_service'
-// 		  ) // 开发环境路径
-// 		: path.join(app.getAppPath(), 'service', 'tyf_tool_service'); // 生产环境路径
-// // 或者如果是独立可执行文件
-// // const PYTHON_SERVICE_PATH = path.join(app.getAppPath(), 'tyf-tool-service', 'dist', 'tyf-tool-service');
 logToFile('NODE_ENV', process.env.NODE_ENV);
 
 // 根据系统和架构选择Python服务路径
 const getPythonServicePath = () => {
 	// 检查是否为打包后的应用（使用app.isPackaged替代NODE_ENV判断）
 	if (!app.isPackaged) {
-		// const basePath = path.join(
-		// 	__dirname,
-		// 	'..',
-		// 	'tyf-tool-service',
-		// 	'dist',
-		// 	'service'
-		// );
-
-		// ！！开发环境路径需要特别设置
-		// 生产环境路径
-		// const basePath = path.join(app.getAppPath(), 'dist', 'service');
-		const basePath = path.join(
-			app.getAppPath(),
-			'..',
-			'app.asar.unpacked',
-			'dist',
-			'service'
-		);
+		// 开发环境路径
+		const basePath = path.join(app.getAppPath(), 'dist', 'service');
 
 		if (isWindows) {
 			return path.join(basePath, 'tyf_tool_service.exe');

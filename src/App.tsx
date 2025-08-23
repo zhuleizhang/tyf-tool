@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Layout, Tabs, Typography, message, Button } from 'antd';
-import { FileExcelOutlined, PictureOutlined, SettingOutlined } from '@ant-design/icons';
+import { Layout, Tabs, Typography, message, Button, Space } from 'antd';
+import {
+	FileExcelOutlined,
+	PictureOutlined,
+	ReloadOutlined,
+	SettingOutlined,
+} from '@ant-design/icons';
 import 'antd/dist/reset.css';
 import TabPane from 'antd/es/tabs/TabPane';
 import ExcelDiff from './pages/excel-diff';
@@ -41,14 +46,23 @@ const App: React.FC = () => {
 					<Title level={3} style={{ margin: 0 }}>
 						🍑 的工具箱
 					</Title>
-					<Button
-						type="text"
-						icon={<SettingOutlined />}
-						onClick={() => setConfigModalVisible(true)}
-						title="全局配置"
-					>
-						配置
-					</Button>
+					<Space>
+						<Button
+							type="text"
+							icon={<ReloadOutlined />}
+							onClick={() => window.location.reload()}
+						>
+							刷新页面
+						</Button>
+						<Button
+							type="text"
+							icon={<SettingOutlined />}
+							onClick={() => setConfigModalVisible(true)}
+							title="全局配置"
+						>
+							配置
+						</Button>
+					</Space>
 				</div>
 			</Header>
 

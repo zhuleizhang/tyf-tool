@@ -5,6 +5,8 @@ import { RecognizeOptions, Rectangle } from 'tesseract.js';
 
 import { recognizeImage as recognizeImageApi } from '@/services/ocr/api';
 import { fileToBase64 } from '@/utils/imageProcessor';
+import { useImageOcrConfig } from '@/hooks/useGlobalConfig';
+import { createTextFilter } from '@/utils/textFilter';
 
 interface OCRProgress {
 	imagePath: string;
@@ -80,6 +82,20 @@ export const useImageOCR = (
 	const progressCleanupRef = useRef<(() => void) | null>(null);
 	const processingStartTimeRef = useRef<number>(0);
 
+	// 获取OCR配置
+	const [ocrConfig] = useImageOcrConfig();
+
+	// 创建文字过滤器
+	const textFilter = useMemo(() => {
+		if (
+			ocrConfig.textFilter.enabled &&
+			ocrConfig.textFilter.rules.length > 0
+		) {
+			return createTextFilter(ocrConfig.textFilter.rules);
+		}
+		return null;
+	}, [ocrConfig.textFilter]);
+
 	// 计算待处理图片数量
 	const pendingCount = useMemo(
 		() =>
@@ -146,13 +162,7 @@ export const useImageOCR = (
 
 	// 在recognizeImage函数中添加使用Python服务的选项
 	const recognizeImage = useCallback(
-		async (
-			imageId: string,
-			options: Partial<RecognizeOptions> & {
-				language?: string;
-				usePythonService?: boolean;
-			} = {}
-		): Promise<OCRResult> => {
+		async (imageId: string): Promise<OCRResult> => {
 			const image = images.find((img) => img.id === imageId);
 			if (!image) {
 				throw new Error('图片不存在');
@@ -161,6 +171,18 @@ export const useImageOCR = (
 			const startTime = Date.now();
 
 			try {
+				let ocrResult: OCRResult = {
+					text: '',
+					confidence: 0,
+					words: 0,
+					lines: 0,
+					paragraphs: 0,
+				};
+
+				// 更新状态为处理中
+				updateImageText(imageId, image.text, 'processing');
+				setCurrentProcessing(image.file.name);
+
 				// 检查缓存
 				const cacheKey = getCacheKey(image.url, image.file.size);
 				const cached = ocrCache.get(cacheKey);
@@ -173,97 +195,57 @@ export const useImageOCR = (
 						'completed',
 						cached.result.confidence
 					);
-					return cached.result;
+					ocrResult = cached.result;
+				} else {
+					// 然后在你的代码中使用：
+					const base64String = await fileToBase64(image.file);
+					const apiResponse = await recognizeImageApi({
+						image_base64: base64String,
+					});
+
+					ocrResult = {
+						text: apiResponse.text,
+						confidence: apiResponse.confidence,
+						words: apiResponse.words,
+						lines: apiResponse.lines,
+						paragraphs: apiResponse.paragraphs,
+					};
 				}
 
-				// 更新状态为处理中
-				updateImageText(imageId, image.text, 'processing');
-				setCurrentProcessing(image.file.name);
-
-				// 获取图片实际尺寸并计算识别区域
-				const imageDimensions = await getImageDimensions(image.file);
-				const imageWidth = imageDimensions.width;
-				const imageHeight = imageDimensions.height;
-
-				// 根据公式计算识别区域
-				const left = Math.floor(imageWidth * 0.15);
-				const top = Math.floor(imageHeight * 0.7);
-				const width = imageWidth - left;
-				const height = imageHeight - top;
-
-				// 构建矩形区域对象
-				const rectangle: Rectangle = {
-					left,
-					top,
-					width,
-					height,
-				};
-
-				// 将File对象转换为ArrayBuffer
-				const imageData = await image.file.arrayBuffer();
-
-				// OCR选项（语言参数将在主进程中处理）
-				const ocrOptions = {
-					...options,
-					// psm: options.psm || 6, // 页面分割模式：假设一个统一的文本块
-					// oem: options.oem || 1, // OCR引擎模式：使用LSTM神经网络
-					// 基础选项
-					// tessedit_char_whitelist: options.whitelist || undefined,
-					// tessedit_pageseg_mode: options.pageSegMode || 6,
-					preserve_interword_spaces: '1',
-					// 语言参数
-					language: options.language || 'chi_sim',
-					// rectangle: rectangle, // 传递矩形区域数组
-				};
-
-				console.log(
-					image.id,
-					image.file.name,
-					ocrOptions,
-					`${image.file.name} ocrOptions`
-				);
-				// 然后在你的代码中使用：
-				const base64String = await fileToBase64(image.file);
-				const result = await recognizeImageApi({
-					image_base64: base64String,
-				});
-				// 调用主进程OCR服务，传递ArrayBuffer数据、文件名和OCR选项
-				// const result = await window.electronAPI?.recognizeImage?.(
-				// 	imageData,
-				// 	image.file.name,
-				// 	ocrOptions
-				// );
-
 				console.log(
 					image.file.name,
-					result,
+					ocrResult,
 					`${image.file.name} result`
 				);
 
-				if (!result || !result.text) {
+				if (!ocrResult || !ocrResult.text) {
 					throw new Error('识别结果为空');
 				}
 
-				const ocrResult: OCRResult = {
-					text: result.text,
-					confidence: result.confidence,
-					words: result.words,
-					lines: result.lines,
-					paragraphs: result.paragraphs,
-				};
-
-				// 缓存结果
 				ocrCache.set(cacheKey, {
-					result: ocrResult,
+					result: { ...ocrResult },
 					timestamp: Date.now(),
 				});
+
+				// 应用文字过滤规则
+				if (textFilter) {
+					const originalText = ocrResult.text;
+					ocrResult.text = textFilter.applyFilter(originalText);
+					
+					// 如果过滤后文本有变化，记录日志
+					if (originalText !== ocrResult.text) {
+						console.log(
+							`文字过滤已应用 - 原文本长度: ${originalText.length}, 过滤后长度: ${ocrResult.text.length}`
+						);
+					}
+				}
 
 				// 更新文本和状态
 				updateImageText(
 					imageId,
-					result.text,
+					ocrResult.text,
 					'completed',
-					result.confidence
+					ocrResult.confidence
 				);
 
 				// 更新统计信息
@@ -273,15 +255,15 @@ export const useImageOCR = (
 					totalTime: prev.totalTime + processingTime,
 					avgConfidence:
 						(prev.avgConfidence * prev.totalProcessed +
-							result.confidence) /
+							ocrResult.confidence) /
 						(prev.totalProcessed + 1),
 				}));
 
 				// 显示识别结果信息
 				console.log(
-					`OCR完成 - 置信度: ${(result.confidence * 100).toFixed(
+					`OCR完成 - 置信度: ${(ocrResult.confidence * 100).toFixed(
 						1
-					)}%, 词数: ${result.words}, 耗时: ${processingTime}ms`
+					)}%, 词数: ${ocrResult.words}, 耗时: ${processingTime}ms`
 				);
 
 				return ocrResult;
@@ -310,7 +292,7 @@ export const useImageOCR = (
 				setCurrentProcessing('');
 			}
 		},
-		[images, updateImageText, getCacheKey]
+		[images, updateImageText, getCacheKey, textFilter]
 	);
 
 	const recognizeAll = useCallback(
@@ -391,8 +373,7 @@ export const useImageOCR = (
 							}
 
 							const result = await recognizeImage(
-								image.id,
-								options
+								image.id
 							);
 							completed++;
 

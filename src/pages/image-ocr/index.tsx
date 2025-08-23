@@ -147,6 +147,7 @@ const ServiceWrapper: React.FC<{ children: React.ReactNode }> = ({
 
 	// 重启服务
 	const restartService = useCallback(async () => {
+		setError(null);
 		// 先停止服务
 		const stopSuccess = await stopService();
 		setLoading(true);
@@ -184,6 +185,27 @@ const ServiceWrapper: React.FC<{ children: React.ReactNode }> = ({
 		return () => clearInterval(intervalId);
 	}, [checkServiceStatus]);
 
+	if (error) {
+		return (
+			<Alert
+				type="error"
+				message="服务异常"
+				description={error}
+				style={{ marginTop: 20, maxWidth: 500 }}
+				action={
+					<Button
+						type="primary"
+						danger
+						onClick={restartService}
+						disabled={serviceStarting || serviceStopping}
+					>
+						重启服务
+					</Button>
+				}
+			/>
+		);
+	}
+
 	// 如果正在加载，显示加载状态
 	if (loading) {
 		return (
@@ -206,24 +228,6 @@ const ServiceWrapper: React.FC<{ children: React.ReactNode }> = ({
 							: '服务启动中，请稍候...'}
 					</Text>
 				</div>
-				{error && (
-					<Alert
-						type="error"
-						message="服务异常"
-						description={error}
-						style={{ marginTop: 20, maxWidth: 500 }}
-						action={
-							<Button
-								type="primary"
-								danger
-								onClick={restartService}
-								disabled={serviceStarting || serviceStopping}
-							>
-								重启服务
-							</Button>
-						}
-					/>
-				)}
 			</div>
 		);
 	}
@@ -255,11 +259,14 @@ const ImageOCR: React.FC<{
 	const [showStats, setShowStats] = useState(true);
 	const [lastActivity, setLastActivity] = useState<string>('');
 	const [selectedLanguage, setSelectedLanguage] = useState<string>('chi_sim'); // 默认中文模式
-	
+
 	// 获取文字过滤配置
 	const [ocrConfig] = useImageOcrConfig();
 	const textFilter = useMemo(() => {
-		if (ocrConfig.textFilter.enabled && ocrConfig.textFilter.rules.length > 0) {
+		if (
+			ocrConfig.textFilter.enabled &&
+			ocrConfig.textFilter.rules.length > 0
+		) {
 			return createTextFilter(ocrConfig.textFilter.rules);
 		}
 		return null;
@@ -276,13 +283,16 @@ const ImageOCR: React.FC<{
 	} = useImageManager();
 
 	// 包装updateImageText以支持文字过滤
-	const updateImageTextWithFilter = useCallback((imageId: string, text: string) => {
-		let filteredText = text;
-		if (textFilter) {
-			filteredText = textFilter.applyFilter(text);
-		}
-		updateImageText(imageId, filteredText);
-	}, [textFilter, updateImageText]);
+	const updateImageTextWithFilter = useCallback(
+		(imageId: string, text: string) => {
+			let filteredText = text;
+			if (textFilter) {
+				filteredText = textFilter.applyFilter(text);
+			}
+			updateImageText(imageId, filteredText);
+		},
+		[textFilter, updateImageText]
+	);
 
 	const {
 		recognizeImage,
@@ -342,7 +352,7 @@ const ImageOCR: React.FC<{
 						selectedLanguage
 					)}模式）`
 				);
-				await recognizeImage(imageId, { language: selectedLanguage });
+				await recognizeImage(imageId);
 				setLastActivity(`图片识别完成: ${image?.file.name}`);
 			} catch (error) {
 				setLastActivity(`图片识别失败: ${image?.file.name}`);
@@ -592,15 +602,20 @@ const ImageOCR: React.FC<{
 			/> */}
 
 			{/* 文字过滤设置 */}
-			<TextFilterSettings 
+			<TextFilterSettings
 				onFilterChange={(enabled, rules) => {
 					if (enabled && rules.length > 0) {
-						setLastActivity(`文字过滤已启用，共${rules.filter(r => r.enabled).length}个规则生效`);
+						setLastActivity(
+							`文字过滤已启用，共${
+								rules.filter((r) => r.enabled).length
+							}个规则生效`
+						);
 					} else {
 						setLastActivity('文字过滤已禁用');
 					}
 				}}
 			/>
+			<div style={{ marginBottom: '16px' }}></div>
 
 			{/* 图片上传区域 */}
 			<Card
