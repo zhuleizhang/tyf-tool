@@ -14,39 +14,39 @@ on:
 
 jobs:
   # 构建Mac Intel版本
-  build-mac-intel:
-    runs-on: macos-11 # 使用较旧的macOS运行器
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+  # build-mac-intel:
+  #   runs-on: macos-11 # 使用较旧的macOS运行器
+  #   steps:
+  #     - name: 检出代码
+  #       uses: actions/checkout@v4
 
-      - name: 设置Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.9"
-          cache: "pip"
+  #     - name: 设置Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.9"
+  #         cache: "pip"
 
-      - name: 安装依赖
-        run: |
-          cd tyf-tool-service
-          pip install -r requirements.txt
-          pip install pyinstaller
+  #     - name: 安装依赖
+  #       run: |
+  #         cd tyf-tool-service
+  #         pip install -r requirements.txt
+  #         pip install pyinstaller
 
-      - name: 构建Mac Intel版本
-        run: |
-          cd tyf-tool-service
-          # 修改spec文件中的target_arch
-          sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
-          PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
-          mkdir -p ../dist/mac-intel
-          cp -f dist/tyf_tool_service ../dist/mac-intel/
+  #     - name: 构建Mac Intel版本
+  #       run: |
+  #         cd tyf-tool-service
+  #         # 修改spec文件中的target_arch
+  #         sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
+  #         PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
+  #         mkdir -p ../dist/mac-intel
+  #         cp -f dist/tyf_tool_service ../dist/mac-intel/
 
-      - name: 上传Mac Intel构建结果
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac-intel-binaries
-          path: dist/mac-intel
-          retention-days: 7
+  #     - name: 上传Mac Intel构建结果
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: mac-intel-binaries
+  #         path: dist/mac-intel
+  #         retention-days: 7
 
   # 构建Mac ARM版本
   build-mac-arm:
