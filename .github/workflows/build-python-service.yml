@@ -1,0 +1,153 @@
+name: 构建Python服务
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "tyf-tool-service/**" # 仅当tyf-tool-service目录有变更时触发
+  # pull_request:
+  #   branches: [main, master]
+  #   paths:
+  #     - "tyf-tool-service/**" # 仅当tyf-tool-service目录有变更时触发
+  # 允许手动触发工作流
+  workflow_dispatch:
+
+jobs:
+  # 构建Mac Intel版本
+  build-mac-intel:
+    runs-on: macos-11 # 使用较旧的macOS运行器
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: "pip"
+
+      - name: 安装依赖
+        run: |
+          cd tyf-tool-service
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: 构建Mac Intel版本
+        run: |
+          cd tyf-tool-service
+          # 修改spec文件中的target_arch
+          sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
+          PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
+          mkdir -p ../dist/mac-intel
+          cp -f dist/tyf_tool_service ../dist/mac-intel/
+
+      - name: 上传Mac Intel构建结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-intel-binaries
+          path: dist/mac-intel
+          retention-days: 7
+
+  # 构建Mac ARM版本
+  build-mac-arm:
+    runs-on: macos-14 # 使用ARM架构的macOS runner
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: "pip"
+
+      - name: 安装依赖
+        run: |
+          cd tyf-tool-service
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: 构建Mac ARM版本
+        run: |
+          cd tyf-tool-service
+          # 确保target_arch为arm64
+          sed -i '' 's/target_arch=None/target_arch="arm64"/' tyf_tool_service.spec
+          PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
+          mkdir -p ../dist/mac-arm
+          cp -f dist/tyf_tool_service ../dist/mac-arm/
+
+      - name: 上传Mac ARM构建结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-arm-binaries
+          path: dist/mac-arm
+          retention-days: 7
+
+  # 构建Windows版本
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: "pip"
+
+      - name: 安装依赖
+        run: |
+          cd tyf-tool-service
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: 构建Windows版本
+        run: |
+          cd tyf-tool-service
+          pyinstaller tyf_tool_service.spec
+          mkdir -p ../dist/windows
+          copy dist\tyf_tool_service.exe ..\dist\windows\
+
+      - name: 上传Windows构建结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries
+          path: dist/windows
+          retention-days: 7
+
+  # 创建发布版本（可选）
+  # create-release:
+  #   needs: [build-mac-intel, build-mac-arm, build-windows]
+  #   runs-on: ubuntu-latest
+  #   # 仅在推送到主分支时创建发布版本
+  #   if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+  #   steps:
+  #     - name: 检出代码
+  #       uses: actions/checkout@v4
+  #
+  #     - name: 下载所有构建结果
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         path: all-artifacts
+  #
+  #     - name: 打包所有构建结果
+  #       run: |
+  #         cd all-artifacts
+  #         zip -r ../tyf-tool-service-mac-intel.zip mac-intel-binaries
+  #         zip -r ../tyf-tool-service-mac-arm.zip mac-arm-binaries
+  #         zip -r ../tyf-tool-service-windows.zip windows-binaries
+  #
+  #     - name: 创建发布版本
+  #       uses: softprops/action-gh-release@v1
+  #       with:
+  #         name: 构建 ${{ github.sha }}
+  #         tag_name: build-${{ github.run_number }}
+  #         files: |
+  #           tyf-tool-service-mac-intel.zip
+  #           tyf-tool-service-mac-arm.zip
+  #           tyf-tool-service-windows.zip
+  #         draft: false
+  #         prerelease: true
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

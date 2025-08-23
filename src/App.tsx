@@ -1,53 +1,113 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Layout, Tabs, Typography, message } from 'antd';
-import { FileExcelOutlined, PictureOutlined } from '@ant-design/icons';
+import {
+	Layout,
+	Tabs,
+	Typography,
+	message,
+	Button,
+	Space,
+	Modal,
+	ConfigProvider,
+} from 'antd';
+import {
+	FileExcelOutlined,
+	PictureOutlined,
+	ReloadOutlined,
+	SettingOutlined,
+} from '@ant-design/icons';
 import 'antd/dist/reset.css';
 import TabPane from 'antd/es/tabs/TabPane';
 import ExcelDiff from './pages/excel-diff';
 import ImageOCR from './pages/image-ocr';
+import { GlobalConfigModal } from './components/GlobalConfigModal';
+
+import zhCN from 'antd/locale/zh_CN';
 
 const { Header, Content, Footer } = Layout;
 const { Title } = Typography;
+console.log('NODE_ENV', process.env.NODE_ENV);
 
 const App: React.FC = () => {
+	const [configModalVisible, setConfigModalVisible] = useState(false);
+
+	useEffect(() => {
+		window.electronAPI?.getAppContents().then((res) => {
+			console.log('获取应用目录内容:', res);
+		});
+	}, []);
+
 	return (
-		<Layout className="layout" style={{ minHeight: '100vh' }}>
-			<Header
-				style={{
-					background: '#fff',
-					padding: '0 20px',
-					boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-				}}
-			>
-				<div
+		<ConfigProvider locale={zhCN}>
+			<Layout className="layout" style={{ minHeight: '100vh' }}>
+				<Header
 					style={{
-						display: 'flex',
-						alignItems: 'center',
-						height: '100%',
+						background: '#fff',
+						padding: '0 20px',
+						boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
 					}}
 				>
-					<Title level={3} style={{ margin: 0 }}>
-						🍑 的工具箱
-					</Title>
-				</div>
-			</Header>
+					<div
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'space-between',
+							height: '100%',
+						}}
+					>
+						<Title level={3} style={{ margin: 0 }}>
+							🍑 的工具箱
+						</Title>
+						<Space>
+							<Button
+								type="text"
+								icon={<ReloadOutlined />}
+								onClick={() =>
+									Modal.confirm({
+										title: '确认刷新页面？',
+										content: '刷新后所有数据将丢失',
+										okText: '确认',
+										okType: 'danger',
+										onOk: () => window.location.reload(),
+									})
+								}
+							>
+								刷新页面
+							</Button>
+							<Button
+								type="text"
+								icon={<SettingOutlined />}
+								onClick={() => setConfigModalVisible(true)}
+								title="全局配置"
+							>
+								配置
+							</Button>
+						</Space>
+					</div>
+				</Header>
 
-			<Content style={{ padding: '24px', paddingTop: 12 }}>
-				<Tabs destroyOnHidden>
-					<TabPane tab="Excel差异分析" key="1">
-						<ExcelDiff />
-					</TabPane>
-					<TabPane tab={'图片文字识别'} key="2">
-						<ImageOCR />
-					</TabPane>
-				</Tabs>
-			</Content>
+				<Content style={{ padding: '24px', paddingTop: 12 }}>
+					<Tabs destroyOnHidden>
+						<TabPane tab="Excel差异分析" key="1">
+							<ExcelDiff />
+						</TabPane>
+						<TabPane tab={'图片文字识别'} key="2">
+							<ImageOCR />
+						</TabPane>
+					</Tabs>
+				</Content>
 
-			<Footer style={{ textAlign: 'center' }}>
-				🍑 的工具箱 ©{new Date().getFullYear()} Zhulei Zhang
-			</Footer>
-		</Layout>
+				<Footer style={{ textAlign: 'center' }}>
+					🍑 的工具箱 ©{new Date().getFullYear()} Zhulei Zhang
+				</Footer>
+
+				{/* 全局配置模态框 */}
+				<GlobalConfigModal
+					visible={configModalVisible}
+					onCancel={() => setConfigModalVisible(false)}
+				/>
+			</Layout>
+		</ConfigProvider>
 	);
 };
 

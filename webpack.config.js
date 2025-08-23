@@ -2,9 +2,10 @@ const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
-	mode: 'development',
+	mode: process.env.NODE_ENV || 'development',
 	entry: './src/App.tsx',
 	target: 'electron-renderer',
+	devtool: 'source-map',
 	module: {
 		rules: [
 			{
@@ -32,6 +33,10 @@ module.exports = {
 	},
 	resolve: {
 		extensions: ['.tsx', '.ts', '.js'],
+		alias: {
+			// 添加这个别名配置
+			'@': path.resolve(__dirname, 'src'),
+		},
 	},
 	output: {
 		filename: 'App.js',
@@ -58,6 +63,17 @@ module.exports = {
 				{
 					from: path.resolve(__dirname, 'src/assets'),
 					to: path.resolve(__dirname, 'dist/assets'),
+				},
+				{
+					from: path.resolve(
+						__dirname,
+						'tyf-tool-service/easyocr_models'
+					),
+					to: path.resolve(__dirname, 'dist/service/easyocr_models'),
+				},
+				{
+					from: path.resolve(__dirname, 'service_build'),
+					to: path.resolve(__dirname, 'dist/service'),
 				},
 			],
 		}),

@@ -128,3 +128,11 @@ dist
 .coda/
 
 .DS_Store
+
+tyf-tool-service/main.spec
+tyf-tool-service/build
+# Python字节码文件
+__pycache__/
+*.py[cod]
+*$py.class
+service_build

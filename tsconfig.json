@@ -1,21 +1,26 @@
 {
-  "compilerOptions": {
-    "target": "ES6",
-    "module": "CommonJS",  // 修改这一行
-    "lib": ["DOM", "ES2015", "ES2016", "ES2017"],
-    "allowJs": true,
-    "jsx": "react",
-    "sourceMap": true,
-    "outDir": "./dist",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": false
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+	"compilerOptions": {
+		"target": "ES6",
+		"module": "CommonJS", // 修改这一行
+		"lib": ["DOM", "ES2015", "ES2016", "ES2017"],
+		"allowJs": true,
+		"jsx": "react",
+		"sourceMap": true,
+		"outDir": "./dist",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"moduleResolution": "node",
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"noEmit": false,
+		"baseUrl": ".", // 移动到这里
+		"paths": {
+			// 移动到这里
+			"@/*": ["src/*"]
+		}
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules"]
 }

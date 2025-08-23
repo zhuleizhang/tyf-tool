@@ -41,7 +41,15 @@ export interface ElectronAPI {
 	// OCR进度监听（保持向后兼容）
 	onOCRProgress: (callback: (data: any) => void) => () => void;
 	onBatchOCRProgress: (callback: (data: any) => void) => () => void;
-	onExportProgress: (callback: (data: any) => void) => () => void;
+	// onExportProgress: (callback: (data: any) => void) => () => void;
+
+	// 控制Python服务的API
+	startPythonService: () => Promise<[boolean, Error | null, any]>;
+	stopPythonService: () => Promise<boolean>;
+	isPythonServiceRunning: () => Promise<boolean>;
+
+	// 获取应用目录内容
+	getAppContents: () => Promise<any>;
 }
 
 declare global {

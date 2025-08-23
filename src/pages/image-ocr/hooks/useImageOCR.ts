@@ -1,7 +1,9 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { message } from 'antd';
 import type { ImageData } from '../index';
-import { RecognizeOptions, Rectangle } from 'tesseract.js';
+
+import { recognizeImage as recognizeImageApi } from '@/services/ocr/api';
+import { fileToBase64 } from '@/utils/imageProcessor';
 
 interface OCRProgress {
 	imagePath: string;
@@ -141,11 +143,9 @@ export const useImageOCR = (
 		return () => clearInterval(interval);
 	}, [cleanExpiredCache]);
 
+	// 在recognizeImage函数中添加使用Python服务的选项
 	const recognizeImage = useCallback(
-		async (
-			imageId: string,
-			options: Partial<RecognizeOptions> & { language?: string } = {}
-		): Promise<OCRResult> => {
+		async (imageId: string): Promise<OCRResult> => {
 			const image = images.find((img) => img.id === imageId);
 			if (!image) {
 				throw new Error('图片不存在');
@@ -154,6 +154,18 @@ export const useImageOCR = (
 			const startTime = Date.now();
 
 			try {
+				let ocrResult: OCRResult = {
+					text: '',
+					confidence: 0,
+					words: 0,
+					lines: 0,
+					paragraphs: 0,
+				};
+
+				// 更新状态为处理中
+				updateImageText(imageId, image.text, 'processing');
+				setCurrentProcessing(image.file.name);
+
 				// 检查缓存
 				const cacheKey = getCacheKey(image.url, image.file.size);
 				const cached = ocrCache.get(cacheKey);
@@ -166,93 +178,44 @@ export const useImageOCR = (
 						'completed',
 						cached.result.confidence
 					);
-					return cached.result;
+					ocrResult = cached.result;
+				} else {
+					// 然后在你的代码中使用：
+					const base64String = await fileToBase64(image.file);
+					const apiResponse = await recognizeImageApi({
+						image_base64: base64String,
+					});
+
+					ocrResult = {
+						text: apiResponse.text,
+						confidence: apiResponse.confidence,
+						words: apiResponse.words,
+						lines: apiResponse.lines,
+						paragraphs: apiResponse.paragraphs,
+					};
 				}
 
-				// 更新状态为处理中
-				updateImageText(imageId, image.text, 'processing');
-				setCurrentProcessing(image.file.name);
-
-				// 获取图片实际尺寸并计算识别区域
-				const imageDimensions = await getImageDimensions(image.file);
-				const imageWidth = imageDimensions.width;
-				const imageHeight = imageDimensions.height;
-
-				// 根据公式计算识别区域
-				const left = Math.floor(imageWidth * 0.15);
-				const top = Math.floor(imageHeight * 0.7);
-				const width = imageWidth - left;
-				const height = imageHeight - top;
-
-				// 构建矩形区域对象
-				const rectangle: Rectangle = {
-					left,
-					top,
-					width,
-					height,
-				};
-
-				// 将File对象转换为ArrayBuffer
-				const imageData = await image.file.arrayBuffer();
-
-				// OCR选项（语言参数将在主进程中处理）
-				const ocrOptions = {
-					...options,
-					// psm: options.psm || 6, // 页面分割模式：假设一个统一的文本块
-					// oem: options.oem || 1, // OCR引擎模式：使用LSTM神经网络
-					// 基础选项
-					// tessedit_char_whitelist: options.whitelist || undefined,
-					// tessedit_pageseg_mode: options.pageSegMode || 6,
-					preserve_interword_spaces: '1',
-					// 语言参数
-					language: options.language || 'chi_sim',
-					// rectangle: rectangle, // 传递矩形区域数组
-				};
-
-				console.log(
-					image.id,
-					image.file.name,
-					ocrOptions,
-					`${image.file.name} ocrOptions`
-				);
-
-				// 调用主进程OCR服务，传递ArrayBuffer数据、文件名和OCR选项
-				const result = await window.electronAPI?.recognizeImage?.(
-					imageData,
-					image.file.name,
-					ocrOptions
-				);
-
 				console.log(
 					image.file.name,
-					result,
+					ocrResult,
 					`${image.file.name} result`
 				);
 
-				if (!result || !result.text) {
+				if (!ocrResult || !ocrResult.text) {
 					throw new Error('识别结果为空');
 				}
 
-				const ocrResult: OCRResult = {
-					text: result.text,
-					confidence: result.confidence,
-					words: result.words,
-					lines: result.lines,
-					paragraphs: result.paragraphs,
-				};
-
-				// 缓存结果
 				ocrCache.set(cacheKey, {
-					result: ocrResult,
+					result: { ...ocrResult },
 					timestamp: Date.now(),
 				});
 
 				// 更新文本和状态
 				updateImageText(
 					imageId,
-					result.text,
+					ocrResult.text,
 					'completed',
-					result.confidence
+					ocrResult.confidence
 				);
 
 				// 更新统计信息
@@ -262,15 +225,15 @@ export const useImageOCR = (
 					totalTime: prev.totalTime + processingTime,
 					avgConfidence:
 						(prev.avgConfidence * prev.totalProcessed +
-							result.confidence) /
+							ocrResult.confidence) /
 						(prev.totalProcessed + 1),
 				}));
 
 				// 显示识别结果信息
 				console.log(
-					`OCR完成 - 置信度: ${(result.confidence * 100).toFixed(
+					`OCR完成 - 置信度: ${(ocrResult.confidence * 100).toFixed(
 						1
-					)}%, 词数: ${result.words}, 耗时: ${processingTime}ms`
+					)}%, 词数: ${ocrResult.words}, 耗时: ${processingTime}ms`
 				);
 
 				return ocrResult;
@@ -309,14 +272,8 @@ export const useImageOCR = (
 				return;
 			}
 
-			const pendingImages = images.filter(
-				(img) => img.status === 'pending' || img.status === 'error'
-			);
-
-			if (pendingImages.length === 0) {
-				message.info('所有图片已完成识别');
-				return;
-			}
+			const processImageCount = images.length;
+			const processImages = images;
 
 			setIsProcessing(true);
 			setProgress(0);
@@ -352,42 +309,35 @@ export const useImageOCR = (
 				const concurrencyLimit = Math.min(
 					Math.max(1, Math.floor(systemConcurrency / 4)), // 使用四分之一的CPU核心，避免资源竞争
 					2, // 最大不超过2个并发，确保每个OCR任务有足够资源
-					pendingImages.length
+					processImageCount
 				);
 
 				console.log(
-					`使用 ${concurrencyLimit} 个并发处理 ${pendingImages.length} 张图片（中文优化模式）`
+					`使用 ${concurrencyLimit} 个并发处理 ${processImageCount} 张图片`
 				);
 
 				const results = [];
 				let completed = 0;
 
 				// 分批处理
-				for (
-					let i = 0;
-					i < pendingImages.length;
-					i += concurrencyLimit
-				) {
+				for (let i = 0; i < processImageCount; i += concurrencyLimit) {
 					if (abortController.signal.aborted) {
 						break;
 					}
 
-					const batch = pendingImages.slice(i, i + concurrencyLimit);
+					const batch = processImages.slice(i, i + concurrencyLimit);
 					const batchPromises = batch.map(async (image, index) => {
 						try {
 							if (abortController.signal.aborted) {
 								return null;
 							}
 
-							const result = await recognizeImage(
-								image.id,
-								options
-							);
+							const result = await recognizeImage(image.id);
 							completed++;
 
 							// 更新进度
 							const currentProgress =
-								(completed / pendingImages.length) * 100;
+								(completed / processImageCount) * 100;
 							setProgress(currentProgress);
 
 							return { success: true, result, imageId: image.id };
@@ -400,7 +350,7 @@ export const useImageOCR = (
 
 							// 更新进度
 							const currentProgress =
-								(completed / pendingImages.length) * 100;
+								(completed / processImageCount) * 100;
 							setProgress(currentProgress);
 
 							return { success: false, error, imageId: image.id };
@@ -413,7 +363,7 @@ export const useImageOCR = (
 					results.push(...batchResults);
 
 					// 中文OCR优化延迟：给每批处理更多时间，提高识别质量
-					if (i + concurrencyLimit < pendingImages.length) {
+					if (i + concurrencyLimit < processImageCount) {
 						const delay = Math.max(
 							500,
 							1000 - systemConcurrency * 100
@@ -437,7 +387,7 @@ export const useImageOCR = (
 				const failed = results.length - successful;
 
 				const totalTime = Date.now() - processingStartTimeRef.current;
-				const avgTimePerImage = totalTime / pendingImages.length;
+				const avgTimePerImage = totalTime / processImageCount;
 
 				if (successful > 0) {
 					message.success(
