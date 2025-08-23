@@ -1,0 +1,96 @@
+name: 构建Electron应用
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "src/**"
+      - "package.json"
+      - "webpack.config.js"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "src/**"
+      - "package.json"
+      - "webpack.config.js"
+  # 允许手动触发工作流
+  workflow_dispatch:
+
+jobs:
+  # 构建Windows应用
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.20.8
+          cache: "npm"
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建Windows应用
+        run: npm run package:win
+
+      - name: 上传Windows构建结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-app
+          path: dist/*.exe
+          retention-days: 7
+
+  # 构建Mac Intel版本
+  build-mac-intel:
+    runs-on: macos-12 # 使用Intel芯片的macOS运行器
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.20.8
+          cache: "npm"
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建Mac Intel版本
+        run: npm run package:mac
+
+      - name: 上传Mac Intel构建结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-intel-app
+          path: dist/*.dmg
+          retention-days: 7
+
+  # 构建Mac ARM版本
+  build-mac-arm:
+    runs-on: macos-14 # 使用ARM芯片的macOS运行器
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.20.8
+          cache: "npm"
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建Mac ARM版本
+        run: npm run package:mac
+
+      - name: 上传Mac ARM构建结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-arm-app
+          path: dist/*.dmg
+          retention-days: 7

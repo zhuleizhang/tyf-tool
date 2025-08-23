@@ -1,4 +1,4 @@
-name: 多平台构建
+name: 构建Python服务
 
 on:
   push:
