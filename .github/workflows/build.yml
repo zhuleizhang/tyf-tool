@@ -15,7 +15,7 @@ on:
 jobs:
   # 构建Mac Intel版本
   build-mac-intel:
-    runs-on: macos-12 # 使用Intel架构的macOS runner
+    runs-on: macos-11 # 使用较旧的macOS运行器
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
