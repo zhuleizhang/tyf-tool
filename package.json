@@ -79,6 +79,7 @@
     "@types/sharp": "^0.31.1",
     "antd": "^5.26.0",
     "axios": "^1.11.0",
+    "dayjs": "^1.11.13",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "heic2any": "^0.0.4",
@@ -86,7 +87,6 @@
     "react-dnd": "^16.0.1",
     "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "^18.2.0",
-    "tesseract.js": "^6.0.1",
     "xlsx": "^0.18.5",
     "zustand": "^5.0.8"
   }

@@ -43,20 +43,6 @@ export interface ElectronAPI {
 	onBatchOCRProgress: (callback: (data: any) => void) => () => void;
 	// onExportProgress: (callback: (data: any) => void) => () => void;
 
-	// 添加调用Python OCR服务的API
-	recognizeImageWithPythonService: (
-		imageData: ArrayBuffer,
-		fileName: string,
-		options?: Partial<RecognizeOptions>
-	) => Promise<{
-		text: string;
-		confidence: number;
-		words: number;
-		lines: number;
-		paragraphs: number;
-		processingTime: number;
-	} | null>;
-
 	// 控制Python服务的API
 	startPythonService: () => Promise<[boolean, Error | null, any]>;
 	stopPythonService: () => Promise<boolean>;

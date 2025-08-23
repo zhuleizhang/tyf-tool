@@ -43,7 +43,6 @@ module.exports = {
 	},
 	externals: {
 		electron: 'commonjs2 electron',
-		'tesseract.js': 'commonjs2 tesseract.js',
 		xlsx: 'commonjs2 xlsx',
 	},
 	node: {

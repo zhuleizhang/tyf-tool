@@ -2,13 +2,18 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 import * as XLSX from 'xlsx';
-import { createWorker } from 'tesseract.js';
 import * as ExcelJS from 'exceljs';
 import { spawn, ChildProcess } from 'child_process';
 import axios from 'axios';
+import dayjs from 'dayjs';
+import timezone from 'dayjs/plugin/timezone';
+import utc from 'dayjs/plugin/utc';
 import { formatFileSize } from './utils/imageProcessor';
 import { excelImageDebugger } from './utils/excelImageDebugger';
-import { OCR_SUPPORTED_FORMATS } from './constants';
+
+// 初始化dayjs时区插件
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 // - macOS: ~/Library/Application Support/[应用名称]/
 // - Windows: C:\Users\[用户名]\AppData\Roaming\[应用名称]\
@@ -36,40 +41,19 @@ const logToFile = (...logData: any[]) => {
 			return prev + JSON.stringify(cur) + '\n';
 		}, '');
 
+		// 使用上海时间
 		// 写入日志
 		fs.appendFileSync(
 			logFile,
-			`${date.toISOString()}: ${logDataStringify}\n`
+			`${dayjs()
+				.tz('Asia/Shanghai')
+				.format('YYYY-MM-DD HH:mm:ss.SSS')}: ${logDataStringify}\n`
 		);
 	} catch (error) {
 		// 如果写日志本身出错，不应该影响应用运行
 		console.error('写入日志文件失败:', error);
 	}
 };
-
-// 删除以下两行
-// import { fileURLToPath } from 'url';
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = path.dirname(__filename);
-
-// let mainWindow: BrowserWindow | null = null;
-
-// function logError(error: Error) {
-// 	// 使用__dirname直接定位项目根目录
-// 	const projectRoot = path.join(__dirname, '..');
-// 	const logFilePath = path.join(projectRoot, 'electron-app-error.log');
-// 	const logMessage = `${new Date().toISOString()} - ${
-// 		error.stack || error.message
-// 	}\n`;
-
-// 	console.log(logFilePath, 'logFilePath');
-
-// 	fs.appendFile(logFilePath, logMessage, (err) => {
-// 		if (err) {
-// 			console.error('Failed to write to log file:', err);
-// 		}
-// 	});
-// }
 
 function createWindow() {
 	logToFile('Creating main window...');
@@ -95,7 +79,7 @@ function createWindow() {
 	// 添加错误处理
 	mainWindow.webContents.on(
 		'did-fail-load',
-		(event, errorCode, errorDescription) => {
+		(event: Event, errorCode: number, errorDescription: string) => {
 			logToFile('Failed to load:', errorCode, errorDescription);
 		}
 	);
@@ -167,7 +151,7 @@ ipcMain.handle('select-file', async () => {
 });
 
 // 处理Excel文件读取
-ipcMain.handle('read-excel', async (event, filePath: string) => {
+ipcMain.handle('read-excel', async (event: any, filePath: string) => {
 	try {
 		// 读取Excel文件时获取工作表范围
 		const workbook = XLSX.readFile(filePath);
@@ -201,7 +185,7 @@ ipcMain.handle('read-excel', async (event, filePath: string) => {
 // 处理结果导出
 ipcMain.handle(
 	'export-results',
-	async (event, data: any[], filePath: string) => {
+	async (event: any, data: any[], filePath: string) => {
 		try {
 			const worksheet = XLSX.utils.json_to_sheet(data);
 			const workbook = XLSX.utils.book_new();
@@ -233,529 +217,11 @@ ipcMain.handle('select-images', async () => {
 	return null;
 });
 
-// OCR工作器缓存和管理
-let ocrWorker: Tesseract.Worker | null = null;
-let ocrWorkerInitializing = false;
-let workerCreationTime = 0;
-let currentWorkerLanguage: string = '';
-const WORKER_TIMEOUT = 30000; // 30秒超时
-const WORKER_MAX_IDLE_TIME = 10 * 60 * 1000; // 10分钟空闲时间
-let lastWorkerUsage = 0;
-
-// 工作器健康检查
-setInterval(() => {
-	if (ocrWorker && Date.now() - lastWorkerUsage > WORKER_MAX_IDLE_TIME) {
-		logToFile('OCR worker idle timeout, terminating...');
-		cleanupOCRResources();
-	}
-}, 60000); // 每分钟检查一次
-
-// 初始化OCR工作器（支持动态语言选择）
-async function initOCRWorker(language: string = 'chi_sim') {
-	// 如果当前工作器存在且语言匹配，直接返回
-	if (ocrWorker && currentWorkerLanguage === language) {
-		lastWorkerUsage = Date.now();
-		return ocrWorker;
-	}
-
-	// 如果语言不匹配，清理当前工作器
-	if (ocrWorker && currentWorkerLanguage !== language) {
-		logToFile(
-			`Language changed from ${currentWorkerLanguage} to ${language}, recreating worker...`
-		);
-		await cleanupOCRResources();
-	}
-
-	if (ocrWorkerInitializing) {
-		// 等待正在进行的初始化
-		while (
-			ocrWorkerInitializing &&
-			Date.now() - workerCreationTime < WORKER_TIMEOUT
-		) {
-			await new Promise((resolve) => setTimeout(resolve, 100));
-		}
-		if (ocrWorker) {
-			lastWorkerUsage = Date.now();
-			return ocrWorker;
-		}
-	}
-
-	ocrWorkerInitializing = true;
-	workerCreationTime = Date.now();
-
-	try {
-		logToFile(`Initializing OCR worker for language: ${language}...`);
-
-		// 根据选择的语言加载相应模型
-		const languages = language.includes('+')
-			? language.split('+')
-			: [language];
-		logToFile(`Loading languages: ${languages.join(', ')}`);
-
-		ocrWorker = await createWorker(languages, 3, {
-			langPath: path.join(__dirname, 'assets'),
-			gzip: false,
-			logger: (m) => {
-				if (m.status === 'recognizing text') {
-					logToFile(
-						`OCR: ${m.status} - ${(m.progress * 100).toFixed(1)}%`
-					);
-				} else {
-					logToFile(`OCR log: ${JSON.stringify(m)}`);
-				}
-			},
-			errorHandler: (error: Error) => {
-				logToFile('OCR Worker error:', error);
-			},
-		});
-
-		// 根据语言设置优化参数
-		const parameters = getOCRParameters(language);
-		await ocrWorker.setParameters(parameters);
-
-		logToFile(`OCR Worker initialized successfully for ${language}`);
-		currentWorkerLanguage = language;
-		lastWorkerUsage = Date.now();
-		return ocrWorker;
-	} catch (error) {
-		logToFile('Failed to initialize OCR worker:', error);
-		ocrWorker = null;
-		throw new Error(
-			`OCR引擎初始化失败: ${
-				error instanceof Error ? error.message : '未知错误'
-			}`
-		);
-	} finally {
-		ocrWorkerInitializing = false;
-	}
-}
-
-// 根据语言获取优化的OCR参数
-function getOCRParameters(language: string): any {
-	const baseParameters = {
-		tessedit_pageseg_mode: '6', // 假设一个统一的文本块
-		tessedit_ocr_engine_mode: '1', // 使用神经网络LSTM引擎
-		preserve_interword_spaces: '1', // 保留单词间空格
-		tessedit_char_whitelist: '', // 不限制字符
-	};
-
-	if (language === 'chi_sim') {
-		// 中文专用优化参数
-		return {
-			...baseParameters,
-			// 中文识别专用参数
-			tessedit_enable_doc_dict: '0', // 禁用文档字典，避免英文干扰
-			tessedit_enable_bigram_correction: '1', // 启用双字符校正，提高中文准确率
-			tessedit_enable_dict_correction: '0', // 禁用字典校正，避免中文被错误校正为英文
-			classify_enable_learning: '0', // 禁用学习模式，专注识别
-			// 提高中文识别质量的参数
-			textord_heavy_nr: '1', // 启用重噪声处理
-			textord_noise_rejwords: '1', // 启用噪声词汇拒绝
-			textord_noise_rejrows: '1', // 启用噪声行拒绝
-		};
-	} else if (language === 'eng') {
-		// 英文专用优化参数
-		return {
-			...baseParameters,
-			tessedit_enable_doc_dict: '1', // 启用文档字典，提高英文准确率
-			tessedit_enable_bigram_correction: '1', // 启用双字符校正
-			tessedit_enable_dict_correction: '1', // 启用字典校正
-			classify_enable_learning: '1', // 启用学习模式
-		};
-	} else {
-		// 混合语言或其他语言的平衡参数
-		return {
-			...baseParameters,
-			tessedit_enable_doc_dict: '0', // 禁用文档字典，避免语言间干扰
-			tessedit_enable_bigram_correction: '1', // 启用双字符校正
-			tessedit_enable_dict_correction: '0', // 禁用字典校正，避免误校正
-			classify_enable_learning: '0', // 禁用学习模式
-		};
-	}
-}
-
-// 根据语言清理文本
-function cleanTextByLanguage(text: string, language: string): string {
-	if (!text) return '';
-
-	if (language === 'chi_sim') {
-		// 中文专用文本清理
-		return text;
-		// // 保留中文字符之间的自然间距
-		// .replace(
-		// 	/([^\u4e00-\u9fa5\s])\s+([^\u4e00-\u9fa5\s])/g,
-		// 	'$1 $2'
-		// ) // 保留非中文字符间的空格
-		// .replace(/\s+/g, ' ') // 将多个空白字符替换为单个空格
-		// .replace(/^\s+|\s+$/g, '') // 去除首尾空白
-		// .replace(/\n\s*\n/g, '\n') // 去除多余的空行
-		// // 中文特殊处理：去除中文字符间的多余空格
-		// .replace(/([a-zA-Z0-9])\s+([a-zA-Z0-9])/g, '$1 $2') // 保留英文数字间空格
-		// .replace(/([a-zA-Z0-9])\s+([\u4e00-\u9fa5])/g, '$1$2') // 去除英文数字与中文间空格
-		// .replace(/([\u4e00-\u9fa5])\s+([a-zA-Z0-9])/g, '$1$2') // 去除中文与英文数字间空格
-		// .replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, '$1$2') // 去除中文字符间空格
-		// .replace(/(.)\1{4,}/g, '$1$1$1') // 减少重复字符（超过4个的减少到3个）
-	} else if (language === 'eng') {
-		// 英文专用文本清理
-		return text
-			.replace(/\s+/g, ' ') // 将多个空白字符替换为单个空格
-			.replace(/^\s+|\s+$/g, '') // 去除首尾空白
-			.replace(/\n\s*\n/g, '\n') // 去除多余的空行
-			.replace(/([a-zA-Z])\s+([a-zA-Z])/g, '$1 $2') // 保持英文单词间的空格
-			.replace(/(.)\1{4,}/g, '$1$1$1'); // 减少重复字符
-	} else {
-		// 混合语言的平衡清理
-		return (
-			text
-				.replace(/\s+/g, ' ') // 将多个空白字符替换为单个空格
-				.replace(/^\s+|\s+$/g, '') // 去除首尾空白
-				.replace(/\n\s*\n/g, '\n') // 去除多余的空行
-				// 保留英文单词间空格，去除中文字符间多余空格
-				.replace(/([a-zA-Z0-9])\s+([a-zA-Z0-9])/g, '$1 $2') // 保留英文数字间空格
-				.replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, '$1$2') // 去除中文字符间空格
-				.replace(/(.)\1{4,}/g, '$1$1$1')
-		); // 减少重复字符
-	}
-}
-
-// 增强的图片预处理函数（处理ArrayBuffer数据，针对中文OCR优化）
-async function preprocessImageData(
-	imageData: ArrayBuffer,
-	fileName: string
-): Promise<string> {
-	try {
-		// 检查数据有效性
-		if (!imageData || imageData.byteLength === 0) {
-			throw new Error('图片数据为空');
-		}
-
-		// 文件大小检查
-		const fileSizeInMB = imageData.byteLength / (1024 * 1024);
-
-		if (fileSizeInMB > 50) {
-			throw new Error(
-				`图片文件过大 (${fileSizeInMB.toFixed(
-					2
-				)}MB)，请使用小于50MB的图片`
-			);
-		}
-
-		if (fileSizeInMB > 5) {
-			console.warn(
-				`较大的图片文件: ${fileSizeInMB.toFixed(
-					2
-				)}MB，建议压缩后再识别以提高速度`
-			);
-		}
-
-		// 检查文件格式
-		const ext = path.extname(fileName).toLowerCase();
-		if (!OCR_SUPPORTED_FORMATS.includes(ext)) {
-			throw new Error(`不支持的图片格式: ${ext}`);
-		}
-
-		// 创建临时文件 - 修改为使用系统临时目录
-		const tempDir = path.join(app.getPath('temp'), 'tyf-tool', 'temp');
-		if (!fs.existsSync(tempDir)) {
-			fs.mkdirSync(tempDir, { recursive: true });
-		}
-
-		const tempFileName = `chinese_ocr_${Date.now()}_${Math.random()
-			.toString(36)
-			.substr(2, 9)}${ext}`;
-		const tempFilePath = path.join(tempDir, tempFileName);
-
-		// 将ArrayBuffer写入临时文件
-		const buffer = Buffer.from(imageData);
-		fs.writeFileSync(tempFilePath, buffer);
-
-		// 验证写入的文件
-		if (!fs.existsSync(tempFilePath)) {
-			throw new Error('创建临时图片文件失败');
-		}
-
-		const stats = fs.statSync(tempFilePath);
-		if (stats.size === 0) {
-			throw new Error('临时图片文件为空');
-		}
-
-		logToFile(
-			`创建中文OCR临时文件: ${tempFilePath} (${fileSizeInMB.toFixed(
-				2
-			)}MB)`
-		);
-
-		// 如果是PNG格式，直接返回（PNG对中文识别效果最好）
-		if (ext === '.png') {
-			return tempFilePath;
-		}
-
-		// 对于其他格式，可以考虑转换为PNG以提高中文识别率
-		// 这里暂时直接返回原文件，后续可以添加图片格式转换逻辑
-		return tempFilePath;
-	} catch (error) {
-		logToFile('Error preprocessing image data:', error);
-		throw error;
-	}
-}
-
-// 清理临时文件
-function cleanupTempFile(filePath: string) {
-	try {
-		if (fs.existsSync(filePath)) {
-			fs.unlinkSync(filePath);
-			logToFile(`Cleaned up temp file: ${filePath}`);
-		}
-	} catch (error) {
-		logToFile(`Error cleaning up temp file: ${JSON.stringify(error)}`);
-	}
-}
-
-// 处理OCR识别（支持动态语言选择）
-ipcMain.handle(
-	'recognize-image',
-	async (
-		event,
-		imageData: ArrayBuffer,
-		fileName: string,
-		options: any = {}
-	) => {
-		const startTime = Date.now();
-		const language = options.language || 'chi_sim';
-		logToFile(
-			`OCR recognition requested for: ${fileName} (Language: ${language})`
-		);
-
-		const maxRetries = 3;
-		let lastError: Error | null = null;
-		let attempt = 0;
-
-		// 输入验证
-		if (!imageData || !(imageData instanceof ArrayBuffer)) {
-			throw new Error('无效的图片数据');
-		}
-
-		if (!fileName || typeof fileName !== 'string') {
-			throw new Error('无效的文件名');
-		}
-
-		let tempFilePath: string | null = null;
-
-		for (attempt = 1; attempt <= maxRetries; attempt++) {
-			try {
-				logToFile(
-					`OCR attempt ${attempt}/${maxRetries} for: ${fileName}`
-				);
-
-				// 预处理图片数据（创建临时文件）
-				tempFilePath = await preprocessImageData(imageData, fileName);
-
-				// 初始化OCR工作器（支持动态语言选择）
-				const worker = await initOCRWorker(language);
-
-				// 发送开始识别的进度更新
-				event.sender.send('ocr-progress', {
-					imagePath: fileName,
-					progress: 10,
-					status: 'starting',
-				});
-				logToFile(fileName, options, `${fileName} ocrOptions`);
-
-				// 设置识别超时
-				const recognitionPromise = worker.recognize(tempFilePath, {
-					rectangles: options.rectangles || undefined,
-					...options,
-				});
-
-				const timeoutPromise = new Promise((_, reject) => {
-					setTimeout(
-						() => reject(new Error('中文OCR识别超时')),
-						90000
-					); // 90秒超时，给中文识别更多时间
-				});
-
-				// 执行OCR识别（带超时）
-				const { data } = (await Promise.race([
-					recognitionPromise,
-					timeoutPromise,
-				])) as any;
-
-				// 验证识别结果
-				if (!data) {
-					throw new Error('OCR引擎返回空结果');
-				}
-
-				// 发送完成的进度更新
-				event.sender.send('ocr-progress', {
-					imagePath: fileName,
-					progress: 100,
-					status: 'completed',
-				});
-
-				// 根据语言进行智能文本清理
-				let cleanText = data.text || '';
-				cleanText = cleanTextByLanguage(cleanText, language);
-
-				logToFile(`${JSON.stringify(data)} recognize data`);
-
-				// 计算置信度（处理异常值）
-				let confidence = (data.confidence || 0) / 100;
-				confidence = Math.max(0, Math.min(1, confidence)); // 确保在0-1范围内
-
-				const processingTime = Date.now() - startTime;
-				logToFile(`${tempFilePath} ${fileName} tempFilePath`);
-
-				const result = {
-					text: cleanText,
-					confidence,
-					words: data.words?.length || 0,
-					lines: data.lines?.length || 0,
-					paragraphs: data.paragraphs?.length || 0,
-					processingTime,
-					rawText: data.text,
-					tempFilePath,
-				};
-
-				logToFile(
-					`OCR completed successfully on attempt ${attempt}: ${JSON.stringify(
-						{
-							textLength: result.text.length,
-							confidence:
-								(result.confidence * 100).toFixed(1) + '%',
-							words: result.words,
-							processingTime: processingTime + 'ms',
-						}
-					)}`
-				);
-
-				// 记录使用时间
-				lastWorkerUsage = Date.now();
-
-				// 清理临时文件
-				if (tempFilePath) {
-					cleanupTempFile(tempFilePath);
-					tempFilePath = null;
-				}
-
-				return result;
-			} catch (error) {
-				lastError = error as Error;
-				const errorMsg = lastError.message || '未知错误';
-
-				logToFile(`OCR attempt ${attempt} failed:`, errorMsg);
-
-				// 发送错误的进度更新
-				event.sender.send('ocr-progress', {
-					imagePath: fileName,
-					progress: 0,
-					status: 'error',
-					error: errorMsg,
-				});
-
-				// 清理当前尝试的临时文件
-				if (tempFilePath) {
-					cleanupTempFile(tempFilePath);
-					tempFilePath = null;
-				}
-
-				// 错误分类和处理策略
-				const isRetryableError =
-					errorMsg.includes('timeout') ||
-					errorMsg.includes('网络') ||
-					errorMsg.includes('临时') ||
-					errorMsg.includes('busy') ||
-					errorMsg.includes('memory');
-
-				// 对于不可重试的错误，直接抛出
-				if (!isRetryableError && attempt === 1) {
-					if (
-						errorMsg.includes('不存在') ||
-						errorMsg.includes('损坏') ||
-						errorMsg.includes('格式')
-					) {
-						throw new Error(`图片文件问题: ${errorMsg}`);
-					}
-					if (errorMsg.includes('过大')) {
-						throw new Error(`文件过大: ${errorMsg}`);
-					}
-				}
-
-				// 如果不是最后一次尝试，等待一段时间后重试
-				if (attempt < maxRetries && isRetryableError) {
-					// 指数退避，但限制最大延迟
-					const delay = Math.min(Math.pow(2, attempt) * 1000, 5000);
-					logToFile(
-						`Retrying in ${delay}ms... (${
-							maxRetries - attempt
-						} attempts remaining)`
-					);
-					await new Promise((resolve) => setTimeout(resolve, delay));
-
-					// 如果是内存或工作器相关错误，重置工作器
-					if (
-						errorMsg.includes('memory') ||
-						errorMsg.includes('worker')
-					) {
-						logToFile('Resetting OCR worker due to error...');
-						await cleanupOCRResources();
-					}
-				}
-			}
-		}
-
-		// 所有重试都失败了
-		const totalTime = Date.now() - startTime;
-		const finalErrorMessage = `OCR识别失败 (${attempt}次尝试，耗时${totalTime}ms): ${
-			lastError?.message || '未知错误'
-		}`;
-
-		logToFile(finalErrorMessage);
-
-		// 最终清理临时文件
-		if (tempFilePath) {
-			cleanupTempFile(tempFilePath);
-		}
-
-		throw new Error(finalErrorMessage);
-	}
-);
-
-// 注意：批量OCR识别已通过渲染进程中的循环调用单张识别来实现
-// 这里保留这个处理器是为了向后兼容，但推荐使用渲染进程中的批量处理逻辑
-// 处理图片数据传输（用于Excel嵌入）
-ipcMain.handle(
-	'get-image-buffer',
-	async (event, imageUrl: string, fileName: string) => {
-		try {
-			// 如果是blob URL，无法在主进程中直接访问，返回null
-			if (imageUrl.startsWith('blob:')) {
-				console.warn(
-					`Cannot access blob URL in main process: ${fileName}`
-				);
-				return null;
-			}
-
-			// 如果是文件路径，尝试读取
-			if (fs.existsSync(imageUrl)) {
-				const buffer = fs.readFileSync(imageUrl);
-				return buffer;
-			}
-
-			console.warn(`Image file not found: ${imageUrl}`);
-			return null;
-		} catch (error) {
-			logToFile(`Error reading image buffer for ${fileName}:`, error);
-			return null;
-		}
-	}
-);
-
-// 处理OCR结果导出（支持图片嵌入）
 // 处理OCR结果导出（支持图片嵌入）
 ipcMain.handle(
 	'export-ocr-excel',
 	async (
-		event,
+		event: any,
 		data: any[],
 		images: any[],
 		imageBuffers: { [key: string]: ArrayBuffer }
@@ -1578,28 +1044,13 @@ function calculateTotalImageSize(images: any[]): string {
 	return formatFileSize(totalSize);
 }
 
-// 清理OCR资源
-async function cleanupOCRResources() {
-	if (ocrWorker) {
-		try {
-			logToFile('Cleaning up OCR worker...');
-			await ocrWorker.terminate();
-			ocrWorker = null;
-			currentWorkerLanguage = '';
-			logToFile('OCR worker terminated successfully');
-		} catch (error) {
-			logToFile('Error terminating OCR worker:', error);
-		}
-	}
-}
-
 // 清理临时文件夹
 function cleanupTempDirectory() {
 	try {
 		const tempDir = path.join(app.getPath('temp'), 'tyf-tool', 'temp');
 		if (fs.existsSync(tempDir)) {
 			const files = fs.readdirSync(tempDir);
-			files.forEach((file) => {
+			files.forEach((file: any) => {
 				const filePath = path.join(tempDir, file);
 				try {
 					fs.unlinkSync(filePath);
@@ -1619,8 +1070,6 @@ function cleanupTempDirectory() {
 app.on('before-quit', async () => {
 	console.log('应用退出，清理资源');
 	logToFile('===== 应用退出，开始清理资源 =====');
-	await cleanupOCRResources();
-	logToFile('OCR资源已清理');
 	cleanupTempDirectory();
 	logToFile('临时目录已清理');
 	if (pythonOCRService) {
@@ -1821,49 +1270,9 @@ ipcMain.handle('isPythonServiceRunning', async () => {
 	}
 });
 
-// 使用Python OCR服务进行识别
-ipcMain.handle(
-	'recognizeImageWithPythonService',
-	async (
-		event,
-		imageData: ArrayBuffer,
-		fileName: string,
-		options: any = {}
-	) => {
-		try {
-			// 检查服务是否运行
-			const isRunning = await (
-				global as any
-			).window?.electronAPI?.isPythonServiceRunning?.();
-			if (!isRunning) {
-				await (
-					global as any
-				).window?.electronAPI?.startPythonService?.();
-			}
-
-			// 将ArrayBuffer转换为Base64
-			const buffer = Buffer.from(imageData);
-			const base64Image = buffer.toString('base64');
-
-			// 调用Python服务
-			const response = await axios.post(
-				`http://localhost:${PYTHON_SERVICE_PORT}/recognize`,
-				{ image_base64: base64Image },
-				{ timeout: 120000 } // 2分钟超时
-			);
-
-			return response.data;
-		} catch (error) {
-			logToFile('Error calling Python OCR service:', error);
-			throw error;
-		}
-	}
-);
-
 // 处理OCR工作器重置
 ipcMain.handle('reset-ocr-worker', async () => {
 	try {
-		await cleanupOCRResources();
 		cleanupTempDirectory();
 		console.log('OCR worker reset successfully');
 		logToFile('OCR worker reset successfully');
@@ -1923,7 +1332,7 @@ function getDirectoryContents(
 }
 
 // 添加IPC处理程序
-ipcMain.handle('getAppContents', async (event, options = {}) => {
+ipcMain.handle('getAppContents', async (event: any, options: any = {}) => {
 	try {
 		const appPath = app.getAppPath();
 		logToFile(`获取应用目录内容: ${appPath}`);
