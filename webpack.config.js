@@ -1,5 +1,6 @@
 const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
+const fs = require('fs'); // 添加fs模块
 
 module.exports = {
 	mode: process.env.NODE_ENV || 'development',
@@ -51,31 +52,52 @@ module.exports = {
 	},
 	plugins: [
 		new CopyPlugin({
-			patterns: [
-				{
-					from: path.resolve(__dirname, 'index.html'),
-					to: path.resolve(__dirname, 'dist'),
-				},
-				{
-					from: path.resolve(__dirname, 'preload.js'),
-					to: path.resolve(__dirname, 'dist'),
-				},
-				{
-					from: path.resolve(__dirname, 'src/assets'),
-					to: path.resolve(__dirname, 'dist/assets'),
-				},
-				{
-					from: path.resolve(
-						__dirname,
-						'tyf-tool-service/easyocr_models'
-					),
-					to: path.resolve(__dirname, 'dist/service/easyocr_models'),
-				},
-				{
-					from: path.resolve(__dirname, 'service_build'),
-					to: path.resolve(__dirname, 'dist/service'),
-				},
-			],
+			patterns: (() => {
+				// 基本复制配置
+				const patterns = [
+					{
+						from: path.resolve(__dirname, 'index.html'),
+						to: path.resolve(__dirname, 'dist'),
+					},
+					{
+						from: path.resolve(__dirname, 'preload.js'),
+						to: path.resolve(__dirname, 'dist'),
+					},
+					{
+						from: path.resolve(__dirname, 'src/assets'),
+						to: path.resolve(__dirname, 'dist/assets'),
+					},
+					{
+						from: path.resolve(
+							__dirname,
+							'tyf-tool-service/easyocr_models'
+						),
+						to: path.resolve(
+							__dirname,
+							'dist/service/easyocr_models'
+						),
+					},
+				];
+
+				// 检查service_build目录是否存在
+				const serviceBuildPath = path.resolve(
+					__dirname,
+					'service_build'
+				);
+				if (fs.existsSync(serviceBuildPath)) {
+					console.log('service_build目录存在，添加到复制配置');
+					patterns.push({
+						from: serviceBuildPath,
+						to: path.resolve(__dirname, 'dist/service'),
+					});
+				} else {
+					console.warn('警告: service_build目录不存在，跳过复制');
+					// 如果需要，可以在这里创建一个空的service目录
+					// fs.mkdirSync(path.resolve(__dirname, 'dist/service'), { recursive: true });
+				}
+
+				return patterns;
+			})(),
 		}),
 	],
 };
