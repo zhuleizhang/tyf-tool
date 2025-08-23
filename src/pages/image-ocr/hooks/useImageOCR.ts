@@ -1,12 +1,9 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { message } from 'antd';
 import type { ImageData } from '../index';
-import { RecognizeOptions, Rectangle } from 'tesseract.js';
 
 import { recognizeImage as recognizeImageApi } from '@/services/ocr/api';
 import { fileToBase64 } from '@/utils/imageProcessor';
-import { useImageOcrConfig } from '@/hooks/useGlobalConfig';
-import { createTextFilter } from '@/utils/textFilter';
 
 interface OCRProgress {
 	imagePath: string;
@@ -81,20 +78,6 @@ export const useImageOCR = (
 	const abortControllerRef = useRef<AbortController | null>(null);
 	const progressCleanupRef = useRef<(() => void) | null>(null);
 	const processingStartTimeRef = useRef<number>(0);
-
-	// 获取OCR配置
-	const [ocrConfig] = useImageOcrConfig();
-
-	// 创建文字过滤器
-	const textFilter = useMemo(() => {
-		if (
-			ocrConfig.textFilter.enabled &&
-			ocrConfig.textFilter.rules.length > 0
-		) {
-			return createTextFilter(ocrConfig.textFilter.rules);
-		}
-		return null;
-	}, [ocrConfig.textFilter]);
 
 	// 计算待处理图片数量
 	const pendingCount = useMemo(
@@ -227,19 +210,6 @@ export const useImageOCR = (
 					timestamp: Date.now(),
 				});
 
-				// 应用文字过滤规则
-				if (textFilter) {
-					const originalText = ocrResult.text;
-					ocrResult.text = textFilter.applyFilter(originalText);
-					
-					// 如果过滤后文本有变化，记录日志
-					if (originalText !== ocrResult.text) {
-						console.log(
-							`文字过滤已应用 - 原文本长度: ${originalText.length}, 过滤后长度: ${ocrResult.text.length}`
-						);
-					}
-				}
-
 				// 更新文本和状态
 				updateImageText(
 					imageId,
@@ -292,7 +262,7 @@ export const useImageOCR = (
 				setCurrentProcessing('');
 			}
 		},
-		[images, updateImageText, getCacheKey, textFilter]
+		[images, updateImageText, getCacheKey]
 	);
 
 	const recognizeAll = useCallback(
@@ -302,14 +272,8 @@ export const useImageOCR = (
 				return;
 			}
 
-			const pendingImages = images.filter(
-				(img) => img.status === 'pending' || img.status === 'error'
-			);
-
-			if (pendingImages.length === 0) {
-				message.info('所有图片已完成识别');
-				return;
-			}
+			const processImageCount = images.length;
+			const processImages = images;
 
 			setIsProcessing(true);
 			setProgress(0);
@@ -345,41 +309,35 @@ export const useImageOCR = (
 				const concurrencyLimit = Math.min(
 					Math.max(1, Math.floor(systemConcurrency / 4)), // 使用四分之一的CPU核心，避免资源竞争
 					2, // 最大不超过2个并发，确保每个OCR任务有足够资源
-					pendingImages.length
+					processImageCount
 				);
 
 				console.log(
-					`使用 ${concurrencyLimit} 个并发处理 ${pendingImages.length} 张图片（中文优化模式）`
+					`使用 ${concurrencyLimit} 个并发处理 ${processImageCount} 张图片`
 				);
 
 				const results = [];
 				let completed = 0;
 
 				// 分批处理
-				for (
-					let i = 0;
-					i < pendingImages.length;
-					i += concurrencyLimit
-				) {
+				for (let i = 0; i < processImageCount; i += concurrencyLimit) {
 					if (abortController.signal.aborted) {
 						break;
 					}
 
-					const batch = pendingImages.slice(i, i + concurrencyLimit);
+					const batch = processImages.slice(i, i + concurrencyLimit);
 					const batchPromises = batch.map(async (image, index) => {
 						try {
 							if (abortController.signal.aborted) {
 								return null;
 							}
 
-							const result = await recognizeImage(
-								image.id
-							);
+							const result = await recognizeImage(image.id);
 							completed++;
 
 							// 更新进度
 							const currentProgress =
-								(completed / pendingImages.length) * 100;
+								(completed / processImageCount) * 100;
 							setProgress(currentProgress);
 
 							return { success: true, result, imageId: image.id };
@@ -392,7 +350,7 @@ export const useImageOCR = (
 
 							// 更新进度
 							const currentProgress =
-								(completed / pendingImages.length) * 100;
+								(completed / processImageCount) * 100;
 							setProgress(currentProgress);
 
 							return { success: false, error, imageId: image.id };
@@ -405,7 +363,7 @@ export const useImageOCR = (
 					results.push(...batchResults);
 
 					// 中文OCR优化延迟：给每批处理更多时间，提高识别质量
-					if (i + concurrencyLimit < pendingImages.length) {
+					if (i + concurrencyLimit < processImageCount) {
 						const delay = Math.max(
 							500,
 							1000 - systemConcurrency * 100
@@ -429,7 +387,7 @@ export const useImageOCR = (
 				const failed = results.length - successful;
 
 				const totalTime = Date.now() - processingStartTimeRef.current;
-				const avgTimePerImage = totalTime / pendingImages.length;
+				const avgTimePerImage = totalTime / processImageCount;
 
 				if (successful > 0) {
 					message.success(

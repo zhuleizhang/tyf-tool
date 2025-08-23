@@ -98,7 +98,7 @@ export const GlobalConfigModal: React.FC<GlobalConfigModalProps> = ({
 		try {
 			const newConfig = JSON.parse(jsonText) as GlobalConfig;
 			await updateConfig(newConfig);
-			message.success('配置已保存，点击刷新按钮生效');
+			message.success('配置已保存，点击刷新页面按钮生效');
 			setHasUnsavedChanges(false);
 		} catch (error) {
 			console.error('应用配置失败:', error);
@@ -153,7 +153,11 @@ export const GlobalConfigModal: React.FC<GlobalConfigModalProps> = ({
 			footer={
 				<Space>
 					<Button onClick={handleCancel}>取消</Button>
-					<Button icon={<UndoOutlined />} onClick={handleReset}>
+					<Button
+						icon={<UndoOutlined />}
+						onClick={handleReset}
+						danger
+					>
 						重置
 					</Button>
 					<Button
@@ -171,7 +175,7 @@ export const GlobalConfigModal: React.FC<GlobalConfigModalProps> = ({
 			<Spin spinning={isLoading}>
 				<div style={{ marginBottom: 16 }}>
 					<Text type="secondary">
-						在此处编辑全局配置，支持JSON格式。修改后需要点击"应用配置"保存，然后点击"刷新"按钮使配置生效。
+						在此处编辑全局配置，支持JSON格式。修改后需要点击"应用配置"保存，然后点击"刷新页面"按钮使配置全局生效。
 					</Text>
 				</div>
 
@@ -192,17 +196,7 @@ export const GlobalConfigModal: React.FC<GlobalConfigModalProps> = ({
 					/>
 				)}
 
-				{validationResult.isValid && hasUnsavedChanges && (
-					<Alert
-						type="warning"
-						message="有未保存的更改"
-						description="请点击应用配置按钮保存更改"
-						style={{ marginBottom: 16 }}
-						showIcon
-					/>
-				)}
-
-				{validationResult.isValid && !hasUnsavedChanges && (
+				{validationResult.isValid && (
 					<Alert
 						type="success"
 						message="配置格式正确"

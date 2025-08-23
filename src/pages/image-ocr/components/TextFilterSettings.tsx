@@ -227,25 +227,30 @@ export const TextFilterSettings: React.FC<TextFilterSettingsProps> = ({
 						<Divider style={{ margin: '16px 0' }} />
 
 						{/* 操作按钮 */}
-						<div style={{ marginBottom: 16 }}>
-							<Space>
-								<Button
-									type="primary"
-									icon={<PlusOutlined />}
-									onClick={handleAddRule}
-									size="small"
-								>
-									添加规则
-								</Button>
-								<Button
-									icon={<ExperimentOutlined />}
-									onClick={() => setIsTestPanelVisible(true)}
-									size="small"
-									disabled={rules.length === 0}
-								>
-									测试过滤效果
-								</Button>
-							</Space>
+						<div
+							style={{
+								display: 'flex',
+								marginBottom: 16,
+								justifyContent: 'space-between',
+							}}
+						>
+							<Button
+								icon={<ExperimentOutlined />}
+								onClick={() => setIsTestPanelVisible(true)}
+								size="small"
+								disabled={rules.length === 0}
+							>
+								测试过滤效果
+							</Button>
+
+							<Button
+								type="primary"
+								icon={<PlusOutlined />}
+								onClick={handleAddRule}
+								size="small"
+							>
+								添加规则
+							</Button>
 						</div>
 
 						{/* 规则列表 */}

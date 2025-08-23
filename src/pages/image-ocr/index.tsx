@@ -283,13 +283,13 @@ const ImageOCR: React.FC<{
 	} = useImageManager();
 
 	// 包装updateImageText以支持文字过滤
-	const updateImageTextWithFilter = useCallback(
-		(imageId: string, text: string) => {
+	const updateImageTextWithFilter: typeof updateImageText = useCallback(
+		(imageId: string, text: string, status, confidence) => {
 			let filteredText = text;
 			if (textFilter) {
 				filteredText = textFilter.applyFilter(text);
 			}
-			updateImageText(imageId, filteredText);
+			updateImageText(imageId, filteredText, status, confidence);
 		},
 		[textFilter, updateImageText]
 	);
@@ -324,24 +324,15 @@ const ImageOCR: React.FC<{
 			return;
 		}
 
-		if (pendingCount === 0) {
-			message.info('所有图片已完成识别');
-			return;
-		}
-
 		try {
-			setLastActivity(
-				`开始批量识别 ${pendingCount} 张图片（${getLanguageDisplayName(
-					selectedLanguage
-				)}模式）`
-			);
+			setLastActivity(`开始批量识别 ${images.length} 张图片`);
 			await recognizeAll({ language: selectedLanguage });
 			setLastActivity('批量识别完成');
 		} catch (error) {
 			setLastActivity('批量识别失败');
 			console.error('Batch recognition error:', error);
 		}
-	}, [images.length, pendingCount, recognizeAll, selectedLanguage]);
+	}, [images.length, recognizeAll, selectedLanguage]);
 
 	const handleRecognizeSingle = useCallback(
 		async (imageId: string) => {
@@ -638,9 +629,10 @@ const ImageOCR: React.FC<{
 							type="primary"
 							icon={<EyeOutlined />}
 							onClick={handleRecognizeAll}
-							disabled={images.length === 0 || pendingCount === 0}
+							disabled={images.length === 0}
 						>
-							批量识别 {pendingCount > 0 && `(${pendingCount}张)`}
+							批量识别{' '}
+							{images?.length > 0 && `(${images.length}张)`}
 						</Button>
 					) : (
 						<Button
@@ -654,22 +646,6 @@ const ImageOCR: React.FC<{
 
 					<ExportButton images={images} />
 
-					{/* <Button
-						icon={<ReloadOutlined />}
-						onClick={handleResetOCR}
-						title="重置OCR引擎"
-					>
-						重置OCR
-					</Button> */}
-
-					{/* <Button
-						icon={<DeleteOutlined />}
-						onClick={handleClearCache}
-						title="清理OCR缓存"
-					>
-						清理缓存
-					</Button> */}
-
 					<Popconfirm
 						title="确定要清空所有数据吗？"
 						onConfirm={handleClearAll}
@@ -679,6 +655,7 @@ const ImageOCR: React.FC<{
 						<Button
 							icon={<ClearOutlined />}
 							disabled={images.length === 0}
+							danger
 						>
 							清空数据
 						</Button>
@@ -739,11 +716,14 @@ const ImageOCR: React.FC<{
 
 			{/* 性能监控 */}
 			{(isProcessing || ocrStats.totalProcessed > 0) && (
-				<PerformanceMonitor
-					isProcessing={isProcessing}
-					ocrStats={ocrStats}
-					imageCount={images.length}
-				/>
+				<>
+					<PerformanceMonitor
+						isProcessing={isProcessing}
+						ocrStats={ocrStats}
+						imageCount={images.length}
+					/>
+					<div style={{ marginBottom: '16px' }}></div>
+				</>
 			)}
 
 			{/* 性能提示 */}
