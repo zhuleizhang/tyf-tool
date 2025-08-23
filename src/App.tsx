@@ -1,17 +1,20 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Layout, Tabs, Typography, message } from 'antd';
-import { FileExcelOutlined, PictureOutlined } from '@ant-design/icons';
+import { Layout, Tabs, Typography, message, Button } from 'antd';
+import { FileExcelOutlined, PictureOutlined, SettingOutlined } from '@ant-design/icons';
 import 'antd/dist/reset.css';
 import TabPane from 'antd/es/tabs/TabPane';
 import ExcelDiff from './pages/excel-diff';
 import ImageOCR from './pages/image-ocr';
+import { GlobalConfigModal } from './components/GlobalConfigModal';
 
 const { Header, Content, Footer } = Layout;
 const { Title } = Typography;
 console.log('NODE_ENV', process.env.NODE_ENV);
 
 const App: React.FC = () => {
+	const [configModalVisible, setConfigModalVisible] = useState(false);
+
 	useEffect(() => {
 		window.electronAPI?.getAppContents().then((res) => {
 			console.log('获取应用目录内容:', res);
@@ -31,12 +34,21 @@ const App: React.FC = () => {
 					style={{
 						display: 'flex',
 						alignItems: 'center',
+						justifyContent: 'space-between',
 						height: '100%',
 					}}
 				>
 					<Title level={3} style={{ margin: 0 }}>
 						🍑 的工具箱
 					</Title>
+					<Button
+						type="text"
+						icon={<SettingOutlined />}
+						onClick={() => setConfigModalVisible(true)}
+						title="全局配置"
+					>
+						配置
+					</Button>
 				</div>
 			</Header>
 
@@ -54,6 +66,12 @@ const App: React.FC = () => {
 			<Footer style={{ textAlign: 'center' }}>
 				🍑 的工具箱 ©{new Date().getFullYear()} Zhulei Zhang
 			</Footer>
+
+			{/* 全局配置模态框 */}
+			<GlobalConfigModal
+				visible={configModalVisible}
+				onCancel={() => setConfigModalVisible(false)}
+			/>
 		</Layout>
 	);
 };

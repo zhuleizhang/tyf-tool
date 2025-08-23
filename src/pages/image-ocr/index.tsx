@@ -39,8 +39,11 @@ import PerformanceMonitor from './components/PerformanceMonitor';
 import KeyboardShortcuts from './components/KeyboardShortcuts';
 import LanguageSelector from './components/LanguageSelector';
 import OptimizationInfo from './components/OptimizationInfo';
+import { TextFilterSettings } from './components/TextFilterSettings';
 import { useImageOCR } from './hooks/useImageOCR';
 import { useImageManager } from './hooks/useImageManager';
+import { useImageOcrConfig } from '../../hooks/useGlobalConfig';
+import { createTextFilter } from '../../utils/textFilter';
 
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
@@ -252,6 +255,15 @@ const ImageOCR: React.FC<{
 	const [showStats, setShowStats] = useState(true);
 	const [lastActivity, setLastActivity] = useState<string>('');
 	const [selectedLanguage, setSelectedLanguage] = useState<string>('chi_sim'); // 默认中文模式
+	
+	// 获取文字过滤配置
+	const [ocrConfig] = useImageOcrConfig();
+	const textFilter = useMemo(() => {
+		if (ocrConfig.textFilter.enabled && ocrConfig.textFilter.rules.length > 0) {
+			return createTextFilter(ocrConfig.textFilter.rules);
+		}
+		return null;
+	}, [ocrConfig.textFilter]);
 
 	const {
 		images,
@@ -262,6 +274,15 @@ const ImageOCR: React.FC<{
 		reorderImages,
 		getStats,
 	} = useImageManager();
+
+	// 包装updateImageText以支持文字过滤
+	const updateImageTextWithFilter = useCallback((imageId: string, text: string) => {
+		let filteredText = text;
+		if (textFilter) {
+			filteredText = textFilter.applyFilter(text);
+		}
+		updateImageText(imageId, filteredText);
+	}, [textFilter, updateImageText]);
 
 	const {
 		recognizeImage,
@@ -274,7 +295,7 @@ const ImageOCR: React.FC<{
 		currentProcessing,
 		pendingCount,
 		ocrStats,
-	} = useImageOCR(images, updateImageText);
+	} = useImageOCR(images, updateImageTextWithFilter);
 
 	// 计算统计信息
 	const stats = useMemo(() => getStats(), [getStats]);
@@ -570,6 +591,17 @@ const ImageOCR: React.FC<{
 				onLanguageChange={handleLanguageChange}
 			/> */}
 
+			{/* 文字过滤设置 */}
+			<TextFilterSettings 
+				onFilterChange={(enabled, rules) => {
+					if (enabled && rules.length > 0) {
+						setLastActivity(`文字过滤已启用，共${rules.filter(r => r.enabled).length}个规则生效`);
+					} else {
+						setLastActivity('文字过滤已禁用');
+					}
+				}}
+			/>
+
 			{/* 图片上传区域 */}
 			<Card
 				title="图片上传"
@@ -749,7 +781,7 @@ const ImageOCR: React.FC<{
 						images={images}
 						onRemove={removeImage}
 						onRecognize={handleRecognizeSingle}
-						onUpdateText={updateImageText}
+						onUpdateText={updateImageTextWithFilter}
 						onReorder={reorderImages}
 					/>
 				)}
