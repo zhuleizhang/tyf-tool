@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 import * as XLSX from 'xlsx';
-import * as fs from 'fs';
 import { createWorker } from 'tesseract.js';
 import * as ExcelJS from 'exceljs';
 import { spawn, ChildProcess } from 'child_process';
@@ -9,6 +9,43 @@ import axios from 'axios';
 import { formatFileSize } from './utils/imageProcessor';
 import { excelImageDebugger } from './utils/excelImageDebugger';
 import { OCR_SUPPORTED_FORMATS } from './constants';
+
+// - macOS: ~/Library/Application Support/[应用名称]/
+// - Windows: C:\Users\[用户名]\AppData\Roaming\[应用名称]\
+// - Linux: ~/.config/[应用名称]/
+// 创建自定义日志函数
+const logToFile = (...logData: any[]) => {
+	try {
+		// 获取应用的用户数据目录（跨平台标准路径）
+		const userDataPath = app.getPath('userData');
+
+		// 创建logs子目录
+		const logsDir = path.join(userDataPath, 'logs');
+		if (!fs.existsSync(logsDir)) {
+			fs.mkdirSync(logsDir, { recursive: true });
+		}
+
+		// 生成日志文件名（包含日期）
+		const date = new Date();
+		const dateStr = `${date.getFullYear()}-${(date.getMonth() + 1)
+			.toString()
+			.padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+		const logFile = path.join(logsDir, `app-${dateStr}.log`);
+
+		const logDataStringify = logData.reduce((prev, cur) => {
+			return prev + JSON.stringify(cur) + '\n';
+		}, '');
+
+		// 写入日志
+		fs.appendFileSync(
+			logFile,
+			`${date.toISOString()}: ${logDataStringify}\n`
+		);
+	} catch (error) {
+		// 如果写日志本身出错，不应该影响应用运行
+		console.error('写入日志文件失败:', error);
+	}
+};
 
 // 删除以下两行
 // import { fileURLToPath } from 'url';
@@ -35,7 +72,7 @@ import { OCR_SUPPORTED_FORMATS } from './constants';
 // }
 
 function createWindow() {
-	console.log('Creating main window...');
+	logToFile('Creating main window...');
 	const mainWindow = new BrowserWindow({
 		width: 1200,
 		height: 800,
@@ -48,7 +85,7 @@ function createWindow() {
 
 	// 修改为正确的相对路径
 	const htmlPath = path.join(__dirname, 'index.html');
-	console.log('Loading HTML from:', htmlPath);
+	logToFile('Loading HTML from:', htmlPath);
 	mainWindow.loadFile(htmlPath);
 
 	if (process.env.NODE_ENV === 'development') {
@@ -59,12 +96,13 @@ function createWindow() {
 	mainWindow.webContents.on(
 		'did-fail-load',
 		(event, errorCode, errorDescription) => {
-			console.error('Failed to load:', errorCode, errorDescription);
+			logToFile('Failed to load:', errorCode, errorDescription);
 		}
 	);
 
 	mainWindow.webContents.on('dom-ready', () => {
 		console.log('DOM ready');
+		logToFile('DOM ready');
 	});
 
 	// // 添加此行强制打开开发者工具
@@ -73,10 +111,17 @@ function createWindow() {
 
 app.whenReady().then(() => {
 	try {
-		console.log('App is ready, creating window...');
+		logToFile('App is ready, creating window...');
 		createWindow();
+
+		// 记录应用启动信息
+		logToFile('===== 应用启动 =====');
+		logToFile(`应用版本: ${app.getVersion()}`);
+		logToFile(`操作系统: ${process.platform} ${process.arch}`);
+		logToFile(`Node版本: ${process.versions.node}`);
+		logToFile(`Electron版本: ${process.versions.electron}`);
 	} catch (error) {
-		console.error('Error creating window:', error);
+		logToFile(`创建窗口失败: ${error}`);
 	}
 });
 
@@ -87,10 +132,13 @@ app.on('ready', () => {
 
 process.on('uncaughtException', (error) => {
 	console.error('Uncaught Exception:', error);
+	logToFile(`未捕获的异常: ${error}`);
+	logToFile(`错误堆栈: ${error.stack}`);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
 	console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+	logToFile(`未处理的Promise拒绝: ${reason}`);
 });
 
 app.on('window-all-closed', () => {
@@ -145,7 +193,7 @@ ipcMain.handle('read-excel', async (event, filePath: string) => {
 
 		return excelData;
 	} catch (error) {
-		console.error('Error reading Excel file:', error);
+		logToFile('Error reading Excel file:', error);
 		throw error;
 	}
 });
@@ -161,7 +209,7 @@ ipcMain.handle(
 			XLSX.writeFile(workbook, filePath);
 			return true;
 		} catch (error) {
-			console.error('Error exporting results:', error);
+			logToFile('Error exporting results:', error);
 			throw error;
 		}
 	}
@@ -197,7 +245,7 @@ let lastWorkerUsage = 0;
 // 工作器健康检查
 setInterval(() => {
 	if (ocrWorker && Date.now() - lastWorkerUsage > WORKER_MAX_IDLE_TIME) {
-		console.log('OCR worker idle timeout, terminating...');
+		logToFile('OCR worker idle timeout, terminating...');
 		cleanupOCRResources();
 	}
 }, 60000); // 每分钟检查一次
@@ -212,7 +260,7 @@ async function initOCRWorker(language: string = 'chi_sim') {
 
 	// 如果语言不匹配，清理当前工作器
 	if (ocrWorker && currentWorkerLanguage !== language) {
-		console.log(
+		logToFile(
 			`Language changed from ${currentWorkerLanguage} to ${language}, recreating worker...`
 		);
 		await cleanupOCRResources();
@@ -236,28 +284,28 @@ async function initOCRWorker(language: string = 'chi_sim') {
 	workerCreationTime = Date.now();
 
 	try {
-		console.log(`Initializing OCR worker for language: ${language}...`);
+		logToFile(`Initializing OCR worker for language: ${language}...`);
 
 		// 根据选择的语言加载相应模型
 		const languages = language.includes('+')
 			? language.split('+')
 			: [language];
-		console.log(`Loading languages: ${languages.join(', ')}`);
+		logToFile(`Loading languages: ${languages.join(', ')}`);
 
 		ocrWorker = await createWorker(languages, 3, {
 			langPath: path.join(__dirname, 'assets'),
 			gzip: false,
 			logger: (m) => {
 				if (m.status === 'recognizing text') {
-					console.log(
+					logToFile(
 						`OCR: ${m.status} - ${(m.progress * 100).toFixed(1)}%`
 					);
 				} else {
-					console.log(`OCR log: ${JSON.stringify(m)}`);
+					logToFile(`OCR log: ${JSON.stringify(m)}`);
 				}
 			},
 			errorHandler: (error: Error) => {
-				console.error('OCR Worker error:', error);
+				logToFile('OCR Worker error:', error);
 			},
 		});
 
@@ -265,12 +313,12 @@ async function initOCRWorker(language: string = 'chi_sim') {
 		const parameters = getOCRParameters(language);
 		await ocrWorker.setParameters(parameters);
 
-		console.log(`OCR Worker initialized successfully for ${language}`);
+		logToFile(`OCR Worker initialized successfully for ${language}`);
 		currentWorkerLanguage = language;
 		lastWorkerUsage = Date.now();
 		return ocrWorker;
 	} catch (error) {
-		console.error('Failed to initialize OCR worker:', error);
+		logToFile('Failed to initialize OCR worker:', error);
 		ocrWorker = null;
 		throw new Error(
 			`OCR引擎初始化失败: ${
@@ -431,7 +479,7 @@ async function preprocessImageData(
 			throw new Error('临时图片文件为空');
 		}
 
-		console.log(
+		logToFile(
 			`创建中文OCR临时文件: ${tempFilePath} (${fileSizeInMB.toFixed(
 				2
 			)}MB)`
@@ -446,7 +494,7 @@ async function preprocessImageData(
 		// 这里暂时直接返回原文件，后续可以添加图片格式转换逻辑
 		return tempFilePath;
 	} catch (error) {
-		console.error('Error preprocessing image data:', error);
+		logToFile('Error preprocessing image data:', error);
 		throw error;
 	}
 }
@@ -456,10 +504,10 @@ function cleanupTempFile(filePath: string) {
 	try {
 		if (fs.existsSync(filePath)) {
 			fs.unlinkSync(filePath);
-			console.log(`Cleaned up temp file: ${filePath}`);
+			logToFile(`Cleaned up temp file: ${filePath}`);
 		}
 	} catch (error) {
-		console.error('Error cleaning up temp file:', error);
+		logToFile(`Error cleaning up temp file: ${JSON.stringify(error)}`);
 	}
 }
 
@@ -474,7 +522,7 @@ ipcMain.handle(
 	) => {
 		const startTime = Date.now();
 		const language = options.language || 'chi_sim';
-		console.log(
+		logToFile(
 			`OCR recognition requested for: ${fileName} (Language: ${language})`
 		);
 
@@ -495,7 +543,7 @@ ipcMain.handle(
 
 		for (attempt = 1; attempt <= maxRetries; attempt++) {
 			try {
-				console.log(
+				logToFile(
 					`OCR attempt ${attempt}/${maxRetries} for: ${fileName}`
 				);
 
@@ -511,7 +559,7 @@ ipcMain.handle(
 					progress: 10,
 					status: 'starting',
 				});
-				console.log(fileName, options, `${fileName} ocrOptions`);
+				logToFile(fileName, options, `${fileName} ocrOptions`);
 
 				// 设置识别超时
 				const recognitionPromise = worker.recognize(tempFilePath, {
@@ -548,14 +596,14 @@ ipcMain.handle(
 				let cleanText = data.text || '';
 				cleanText = cleanTextByLanguage(cleanText, language);
 
-				console.log(data, 'recognize data');
+				logToFile(`${JSON.stringify(data)} recognize data`);
 
 				// 计算置信度（处理异常值）
 				let confidence = (data.confidence || 0) / 100;
 				confidence = Math.max(0, Math.min(1, confidence)); // 确保在0-1范围内
 
 				const processingTime = Date.now() - startTime;
-				console.log(tempFilePath, `${fileName} tempFilePath`);
+				logToFile(`${tempFilePath} ${fileName} tempFilePath`);
 
 				const result = {
 					text: cleanText,
@@ -568,14 +616,16 @@ ipcMain.handle(
 					tempFilePath,
 				};
 
-				console.log(
-					`OCR completed successfully on attempt ${attempt}:`,
-					{
-						textLength: result.text.length,
-						confidence: (result.confidence * 100).toFixed(1) + '%',
-						words: result.words,
-						processingTime: processingTime + 'ms',
-					}
+				logToFile(
+					`OCR completed successfully on attempt ${attempt}: ${JSON.stringify(
+						{
+							textLength: result.text.length,
+							confidence:
+								(result.confidence * 100).toFixed(1) + '%',
+							words: result.words,
+							processingTime: processingTime + 'ms',
+						}
+					)}`
 				);
 
 				// 记录使用时间
@@ -592,7 +642,7 @@ ipcMain.handle(
 				lastError = error as Error;
 				const errorMsg = lastError.message || '未知错误';
 
-				console.error(`OCR attempt ${attempt} failed:`, errorMsg);
+				logToFile(`OCR attempt ${attempt} failed:`, errorMsg);
 
 				// 发送错误的进度更新
 				event.sender.send('ocr-progress', {
@@ -634,7 +684,7 @@ ipcMain.handle(
 				if (attempt < maxRetries && isRetryableError) {
 					// 指数退避，但限制最大延迟
 					const delay = Math.min(Math.pow(2, attempt) * 1000, 5000);
-					console.log(
+					logToFile(
 						`Retrying in ${delay}ms... (${
 							maxRetries - attempt
 						} attempts remaining)`
@@ -646,7 +696,7 @@ ipcMain.handle(
 						errorMsg.includes('memory') ||
 						errorMsg.includes('worker')
 					) {
-						console.log('Resetting OCR worker due to error...');
+						logToFile('Resetting OCR worker due to error...');
 						await cleanupOCRResources();
 					}
 				}
@@ -659,7 +709,7 @@ ipcMain.handle(
 			lastError?.message || '未知错误'
 		}`;
 
-		console.error(finalErrorMessage);
+		logToFile(finalErrorMessage);
 
 		// 最终清理临时文件
 		if (tempFilePath) {
@@ -694,7 +744,7 @@ ipcMain.handle(
 			console.warn(`Image file not found: ${imageUrl}`);
 			return null;
 		} catch (error) {
-			console.error(`Error reading image buffer for ${fileName}:`, error);
+			logToFile(`Error reading image buffer for ${fileName}:`, error);
 			return null;
 		}
 	}
@@ -715,19 +765,21 @@ ipcMain.handle(
 			excelImageDebugger.clear();
 
 			// 输出调试信息
-			console.log('Export OCR Excel called with:', {
-				dataLength: data?.length || 0,
-				imagesLength: images?.length || 0,
-				imageBuffersKeys: imageBuffers
-					? Object.keys(imageBuffers).length
-					: 0,
-				imageBufferSizes: imageBuffers
-					? Object.entries(imageBuffers).map(([id, buffer]) => ({
-							id,
-							size: buffer?.byteLength || 0,
-					  }))
-					: [],
-			});
+			logToFile(
+				`Export OCR Excel called with: JSON.stringify(${{
+					dataLength: data?.length || 0,
+					imagesLength: images?.length || 0,
+					imageBuffersKeys: imageBuffers
+						? Object.keys(imageBuffers).length
+						: 0,
+					imageBufferSizes: imageBuffers
+						? Object.entries(imageBuffers).map(([id, buffer]) => ({
+								id,
+								size: buffer?.byteLength || 0,
+						  }))
+						: [],
+				}})`
+			);
 
 			// 发送导出开始进度
 			event.sender.send('export-progress', {
@@ -909,7 +961,7 @@ ipcMain.handle(
 										image.file?.name ||
 										image.url ||
 										`image_${i + 1}`;
-									console.log(
+									logToFile(
 										`📦 Using provided buffer for image: ${logFileName}, size: ${imageBuffer.length} bytes`
 									);
 								} else {
@@ -917,7 +969,7 @@ ipcMain.handle(
 										image.file?.name ||
 										image.url ||
 										`image_${i + 1}`;
-									console.warn(
+									logToFile(
 										`⚠️ Invalid buffer for image: ${logFileName}, byteLength: ${
 											arrayBuffer?.byteLength ||
 											'undefined'
@@ -925,7 +977,7 @@ ipcMain.handle(
 									);
 								}
 							} else {
-								console.warn(
+								logToFile(
 									`⚠️ No buffer found in imageBuffers for image ID: ${
 										image.id
 									}, available IDs: ${Object.keys(
@@ -947,18 +999,19 @@ ipcMain.handle(
 												image.file.path
 											);
 											imageSource = 'file path';
-											console.log(
-												`📁 Read from file path: ${image.file.path}, size: ${imageBuffer.length} bytes`
+											logToFile(
+												`📁 Read from file path: ${image.file.path}, size: ${imageBuffer?.length} bytes`
 											);
 										} else {
-											console.warn(
+											logToFile(
 												`⚠️ File path does not exist: ${image.file.path}`
 											);
 										}
 									} catch (pathError) {
-										console.warn(
-											`❌ Error reading from file path ${image.file.path}:`,
-											pathError
+										logToFile(
+											`❌ Error reading from file path ${
+												image.file.path
+											}: ${JSON.stringify(pathError)}`
 										);
 									}
 								}
@@ -976,16 +1029,16 @@ ipcMain.handle(
 											image.url
 										);
 										imageSource = 'URL path';
-										console.log(
-											`🔗 Read from URL path: ${image.url}, size: ${imageBuffer.length} bytes`
+										logToFile(
+											`🔗 Read from URL path: ${image.url}, size: ${imageBuffer?.length} bytes`
 										);
 									} else {
-										console.warn(
+										logToFile(
 											`⚠️ URL path does not exist: ${image.url}`
 										);
 									}
 								} catch (urlError) {
-									console.warn(
+									logToFile(
 										`❌ Error reading from URL path ${image.url}:`,
 										urlError
 									);
@@ -998,24 +1051,24 @@ ipcMain.handle(
 									image.file?.name ||
 									image.url ||
 									`image_${i + 1}`;
-								console.error(
+								logToFile(
 									`❌ Failed to get image buffer for: ${errorFileName}`
 								);
-								console.error(`   - Image ID: ${image.id}`);
-								console.error(
+								logToFile(`   - Image ID: ${image.id}`);
+								logToFile(
 									`   - File path: ${
 										image.file?.path || 'undefined'
 									}`
 								);
-								console.error(
+								logToFile(
 									`   - URL: ${image.url || 'undefined'}`
 								);
-								console.error(
+								logToFile(
 									`   - Available buffer IDs: ${Object.keys(
 										imageBuffers || {}
 									).join(', ')}`
 								);
-								console.error(
+								logToFile(
 									`   - Buffer exists: ${
 										imageBuffers && imageBuffers[image.id]
 											? 'yes'
@@ -1023,7 +1076,7 @@ ipcMain.handle(
 									}`
 								);
 								if (imageBuffers && imageBuffers[image.id]) {
-									console.error(
+									logToFile(
 										`   - Buffer size: ${
 											imageBuffers[image.id].byteLength
 										} bytes`
@@ -1039,7 +1092,7 @@ ipcMain.handle(
 										image.file?.name ||
 										image.url ||
 										`image_${i + 1}`;
-									console.log(
+									logToFile(
 										`📝 Processing image with fileName: ${fileName}`
 									);
 
@@ -1056,7 +1109,7 @@ ipcMain.handle(
 										throw new Error('图片数据格式无效');
 									}
 
-									console.log(
+									logToFile(
 										`Adding image to workbook: ${fileName}, size: ${imageBuffer.length} bytes, extension: ${imageExtension}`
 									);
 
@@ -1079,7 +1132,7 @@ ipcMain.handle(
 										image.file?.name ||
 										image.url ||
 										`image_${i + 1}`;
-									console.log(
+									logToFile(
 										`✅ Successfully embedded image: ${successFileName} at row ${rowIndex} (source: ${imageSource})`
 									);
 
@@ -1103,7 +1156,7 @@ ipcMain.handle(
 										image.file?.name ||
 										image.url ||
 										`image_${i + 1}`;
-									console.error(
+									logToFile(
 										`❌ Error embedding image ${embedErrorFileName}:`,
 										embedError
 									);
@@ -1205,7 +1258,7 @@ ipcMain.handle(
 								image.file?.name ||
 								image.url ||
 								`image_${i + 1}`;
-							console.error(
+							logToFile(
 								`Error processing image ${imageErrorFileName}:`,
 								imageError
 							);
@@ -1231,7 +1284,7 @@ ipcMain.handle(
 							message: `处理图片 ${i + 1}/${images.length}...`,
 						});
 					} catch (error) {
-						console.error(`Error processing image ${i}:`, error);
+						logToFile(`Error processing image ${i}:`, error);
 						// 即使单张图片失败，也继续处理其他图片
 						const errorRowFileName =
 							image.file?.name || image.url || `image_${i + 1}`;
@@ -1353,16 +1406,16 @@ ipcMain.handle(
 
 				// 生成并输出调试报告
 				const debugSummary = excelImageDebugger.getSummary();
-				console.log('\n=== 📊 Excel图片嵌入调试摘要 ===');
-				console.log(`总图片数: ${debugSummary.total}`);
-				console.log(`成功嵌入: ${debugSummary.successful}`);
-				console.log(`嵌入失败: ${debugSummary.failed}`);
-				console.log(`成功率: ${debugSummary.successRate.toFixed(1)}%`);
-				console.log(`处理时间: ${debugSummary.processingTime}ms`);
+				logToFile('\n=== 📊 Excel图片嵌入调试摘要 ===');
+				logToFile(`总图片数: ${debugSummary.total}`);
+				logToFile(`成功嵌入: ${debugSummary.successful}`);
+				logToFile(`嵌入失败: ${debugSummary.failed}`);
+				logToFile(`成功率: ${debugSummary.successRate.toFixed(1)}%`);
+				logToFile(`处理时间: ${debugSummary.processingTime}ms`);
 
 				if (debugSummary.failed > 0) {
-					console.log('\n📋 详细调试报告:');
-					console.log(excelImageDebugger.generateReport());
+					logToFile('\n📋 详细调试报告:');
+					logToFile(excelImageDebugger.generateReport());
 				}
 
 				// 发送完成进度
@@ -1378,7 +1431,7 @@ ipcMain.handle(
 			}
 			return false;
 		} catch (error) {
-			console.error('Error exporting OCR results:', error);
+			logToFile('Error exporting OCR results:', error);
 
 			// 发送错误进度
 			event.sender.send('export-progress', {
@@ -1468,7 +1521,7 @@ function validateImageBuffer(buffer: Buffer, extension: string): boolean {
 				return isJPEG || isPNG || isGIF || isBMP;
 		}
 	} catch (error) {
-		console.error('Error validating image buffer:', error);
+		logToFile('Error validating image buffer:', error);
 		return false;
 	}
 }
@@ -1529,13 +1582,13 @@ function calculateTotalImageSize(images: any[]): string {
 async function cleanupOCRResources() {
 	if (ocrWorker) {
 		try {
-			console.log('Cleaning up OCR worker...');
+			logToFile('Cleaning up OCR worker...');
 			await ocrWorker.terminate();
 			ocrWorker = null;
 			currentWorkerLanguage = '';
-			console.log('OCR worker terminated successfully');
+			logToFile('OCR worker terminated successfully');
 		} catch (error) {
-			console.error('Error terminating OCR worker:', error);
+			logToFile('Error terminating OCR worker:', error);
 		}
 	}
 }
@@ -1551,29 +1604,33 @@ function cleanupTempDirectory() {
 				try {
 					fs.unlinkSync(filePath);
 				} catch (error) {
-					console.error(
-						`Error deleting temp file ${filePath}:`,
-						error
-					);
+					logToFile(`Error deleting temp file ${filePath}:`, error);
 				}
 			});
-			console.log(`Cleaned up ${files.length} temporary files`);
+			logToFile(`Cleaned up ${files.length} temporary files`);
+			logToFile(`已清理 ${files.length} 个临时文件`);
 		}
 	} catch (error) {
-		console.error('Error cleaning up temp directory:', error);
+		logToFile('Error cleaning up temp directory:', error);
 	}
 }
 
 // 应用退出时清理资源
 app.on('before-quit', async () => {
 	console.log('应用退出，清理资源');
+	logToFile('===== 应用退出，开始清理资源 =====');
 	await cleanupOCRResources();
+	logToFile('OCR资源已清理');
 	cleanupTempDirectory();
+	logToFile('临时目录已清理');
 	if (pythonOCRService) {
 		console.log('清理Python服务');
+		logToFile('正在终止Python服务');
 		pythonOCRService.kill();
 		pythonOCRService = null;
+		logToFile('Python服务已终止');
 	}
+	logToFile('===== 应用退出完成 =====');
 });
 // Python服务进程引用
 let pythonOCRService: ChildProcess | null = null;
@@ -1601,11 +1658,12 @@ console.log(app.getAppPath());
 // 		: path.join(app.getAppPath(), 'service', 'tyf_tool_service'); // 生产环境路径
 // // 或者如果是独立可执行文件
 // // const PYTHON_SERVICE_PATH = path.join(app.getAppPath(), 'tyf-tool-service', 'dist', 'tyf-tool-service');
+logToFile('NODE_ENV', process.env.NODE_ENV);
 
 // 根据系统和架构选择Python服务路径
 const getPythonServicePath = () => {
-	// 开发环境路径
-	if (process.env.NODE_ENV === 'development') {
+	// 检查是否为打包后的应用（使用app.isPackaged替代NODE_ENV判断）
+	if (!app.isPackaged) {
 		// const basePath = path.join(
 		// 	__dirname,
 		// 	'..',
@@ -1614,7 +1672,16 @@ const getPythonServicePath = () => {
 		// 	'service'
 		// );
 
-		const basePath = path.join(app.getAppPath(), 'dist', 'service');
+		// ！！开发环境路径需要特别设置
+		// 生产环境路径
+		// const basePath = path.join(app.getAppPath(), 'dist', 'service');
+		const basePath = path.join(
+			app.getAppPath(),
+			'..',
+			'app.asar.unpacked',
+			'dist',
+			'service'
+		);
 
 		if (isWindows) {
 			return path.join(basePath, 'tyf_tool_service.exe');
@@ -1628,16 +1695,18 @@ const getPythonServicePath = () => {
 	}
 	// 生产环境路径
 	else {
-		const basePath = path.join(app.getAppPath(), 'service');
+		const basePath = path.join(
+			app.getAppPath(),
+			'..',
+			'app.asar.unpacked',
+			'dist',
+			'service'
+		);
 
 		if (isWindows) {
-			return path.join(basePath, 'windows', 'tyf_tool_service.exe');
+			return path.join(basePath, 'tyf_tool_service.exe');
 		} else if (isMac) {
-			if (isArm64) {
-				return path.join(basePath, 'mac-arm', 'tyf_tool_service');
-			} else {
-				return path.join(basePath, 'mac-intel', 'tyf_tool_service');
-			}
+			return path.join(basePath, 'tyf_tool_service');
 		}
 	}
 };
@@ -1646,26 +1715,59 @@ const getPythonServicePath = () => {
 ipcMain.handle('startPythonService', async () => {
 	try {
 		if (pythonOCRService) {
+			logToFile('Python服务已经在运行');
 			return true; // 服务已经在运行
 		}
 
 		// 获取适合当前系统和架构的可执行文件路径
 		const servicePath = getPythonServicePath();
 		console.log(`Starting Python service from: ${servicePath}`);
+		logToFile(`尝试启动Python服务，路径: ${servicePath}`);
+
+		// 检查文件是否存在
+		if (!fs.existsSync(servicePath)) {
+			const errorMsg = `服务文件不存在: ${servicePath}`;
+			console.error(errorMsg);
+			logToFile(errorMsg);
+			return [false, errorMsg];
+		}
+
+		// 在Mac系统中添加可执行权限
+		if (isMac) {
+			try {
+				fs.chmodSync(servicePath, '755');
+				logToFile(`已为服务文件添加可执行权限: ${servicePath}`);
+			} catch (chmodError) {
+				const errorMsg = `无法设置可执行权限: ${chmodError}`;
+				logToFile(errorMsg);
+				// 尝试继续执行，可能会失败
+			}
+		}
 
 		// 启动服务
-		pythonOCRService = spawn(servicePath, []);
+		// 在Windows系统中，如果路径包含空格，确保正确处理
+		if (isWindows && servicePath.includes(' ')) {
+			// Windows会自动处理带引号的路径
+			pythonOCRService = spawn(servicePath, [], {
+				windowsVerbatimArguments: true,
+			});
+		} else {
+			pythonOCRService = spawn(servicePath, []);
+		}
 
 		pythonOCRService.stdout?.on('data', (data) => {
 			console.log(`Python OCR Service: ${data}`);
+			logToFile(`Python服务输出: ${data}`);
 		});
 
 		pythonOCRService.stderr?.on('data', (data) => {
-			console.error(`Python OCR Service Error: ${data}`);
+			logToFile(`Python OCR Service Error: ${data}`);
+			logToFile(`Python服务错误: ${data}`);
 		});
 
 		pythonOCRService.on('close', (code) => {
 			console.log(`Python OCR Service exited with code ${code}`);
+			logToFile(`Python服务退出，退出码: ${code}`);
 			pythonOCRService = null;
 		});
 
@@ -1674,10 +1776,29 @@ ipcMain.handle('startPythonService', async () => {
 			await new Promise((resolve) => setTimeout(resolve, 1000));
 		}
 
-		return true;
+		return [true, null];
 	} catch (error) {
-		console.error('Failed to start Python OCR service:', error);
-		return false;
+		const servicePath = getPythonServicePath();
+		logToFile('Failed to start Python OCR service:', error);
+		logToFile(`启动Python服务失败: ${error}`);
+		logToFile(
+			`错误详情: ${JSON.stringify({
+				servicePath,
+				isArm64,
+				isMac,
+				isWindows,
+			})}`
+		);
+		return [
+			false,
+			error,
+			{
+				servicePath,
+				isArm64,
+				isMac,
+				isWindows,
+			},
+		];
 	}
 });
 
@@ -1685,10 +1806,12 @@ ipcMain.handle('startPythonService', async () => {
 ipcMain.handle('stopPythonService', async () => {
 	try {
 		if (pythonOCRService) {
+			logToFile('尝试停止Python服务');
 			// Windows上可能需要使用taskkill强制结束进程
 			if (isWindows) {
 				// 首先尝试正常结束进程
 				pythonOCRService.kill();
+				logToFile('Windows系统：已发送kill信号');
 
 				// 给一点时间让进程正常退出
 				await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1699,13 +1822,18 @@ ipcMain.handle('stopPythonService', async () => {
 			} else {
 				// Mac和Linux可以使用SIGTERM信号
 				pythonOCRService.kill('SIGTERM');
+				logToFile('Mac/Linux系统：已发送SIGTERM信号');
 			}
 
 			pythonOCRService = null;
+			logToFile('Python服务已停止');
+		} else {
+			logToFile('无需停止Python服务：服务未运行');
 		}
 		return true;
 	} catch (error) {
-		console.error('Failed to stop Python OCR service:', error);
+		logToFile('Failed to stop Python OCR service:', error);
+		logToFile(`停止Python服务失败: ${error}`);
 		return false;
 	}
 });
@@ -1755,7 +1883,7 @@ ipcMain.handle(
 
 			return response.data;
 		} catch (error) {
-			console.error('Error calling Python OCR service:', error);
+			logToFile('Error calling Python OCR service:', error);
 			throw error;
 		}
 	}
@@ -1767,9 +1895,74 @@ ipcMain.handle('reset-ocr-worker', async () => {
 		await cleanupOCRResources();
 		cleanupTempDirectory();
 		console.log('OCR worker reset successfully');
+		logToFile('OCR worker reset successfully');
 		return true;
 	} catch (error) {
-		console.error('Error resetting OCR worker:', error);
+		logToFile('Error resetting OCR worker:', error);
+		logToFile(`Error resetting OCR worker: ${error}`);
+		throw error;
+	}
+});
+
+// 递归获取目录内容
+function getDirectoryContents(
+	directoryPath: string,
+	maxDepth: number = 3,
+	currentDepth: number = 0
+): any {
+	try {
+		if (currentDepth > maxDepth) return null;
+
+		const result: any = {
+			path: directoryPath,
+			name: path.basename(directoryPath),
+			isDirectory: true,
+			children: [],
+		};
+
+		const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+
+		for (const entry of entries) {
+			const fullPath = path.join(directoryPath, entry.name);
+
+			if (entry.isDirectory()) {
+				const subDir = getDirectoryContents(
+					fullPath,
+					maxDepth,
+					currentDepth + 1
+				);
+				if (subDir) {
+					result.children.push(subDir);
+				}
+			} else {
+				result.children.push({
+					path: fullPath,
+					name: entry.name,
+					isDirectory: false,
+					size: fs.statSync(fullPath).size,
+				});
+			}
+		}
+
+		return result;
+	} catch (error) {
+		logToFile(`读取目录内容出错: ${directoryPath}`, error);
+		return null;
+	}
+}
+
+// 添加IPC处理程序
+ipcMain.handle('getAppContents', async (event, options = {}) => {
+	try {
+		const appPath = app.getAppPath();
+		logToFile(`获取应用目录内容: ${appPath}`);
+
+		const maxDepth = options.maxDepth || 3; // 默认递归深度为3
+		const contents = getDirectoryContents(appPath, maxDepth);
+
+		return contents;
+	} catch (error) {
+		logToFile('获取应用目录内容失败:', error);
 		throw error;
 	}
 });

@@ -2,7 +2,7 @@ const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
-	mode: 'development',
+	mode: process.env.NODE_ENV || 'development',
 	entry: './src/App.tsx',
 	target: 'electron-renderer',
 	devtool: 'source-map',

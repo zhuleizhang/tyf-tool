@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('versions', {
 });
 
 // 暴露Electron API给渲染进程
+// 在electronAPI对象中添加以下内容
 contextBridge.exposeInMainWorld('electronAPI', {
 	// 现有的Excel相关API
 	selectFile: () => ipcRenderer.invoke('select-file'),
@@ -63,6 +64,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	startPythonService: () => ipcRenderer.invoke('startPythonService'),
 	stopPythonService: () => ipcRenderer.invoke('stopPythonService'),
 	isPythonServiceRunning: () => ipcRenderer.invoke('isPythonServiceRunning'),
+
+	// 添加获取应用目录内容的API
+	getAppContents: (options) => ipcRenderer.invoke('getAppContents', options),
 });
 
 window.addEventListener('DOMContentLoaded', () => {

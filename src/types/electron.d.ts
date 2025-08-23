@@ -58,9 +58,12 @@ export interface ElectronAPI {
 	} | null>;
 
 	// 控制Python服务的API
-	startPythonService: () => Promise<boolean>;
+	startPythonService: () => Promise<[boolean, Error | null, any]>;
 	stopPythonService: () => Promise<boolean>;
 	isPythonServiceRunning: () => Promise<boolean>;
+
+	// 获取应用目录内容
+	getAppContents: () => Promise<any>;
 }
 
 declare global {

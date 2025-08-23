@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Layout, Tabs, Typography, message } from 'antd';
 import { FileExcelOutlined, PictureOutlined } from '@ant-design/icons';
@@ -9,8 +9,15 @@ import ImageOCR from './pages/image-ocr';
 
 const { Header, Content, Footer } = Layout;
 const { Title } = Typography;
+console.log('NODE_ENV', process.env.NODE_ENV);
 
 const App: React.FC = () => {
+	useEffect(() => {
+		window.electronAPI?.getAppContents().then((res) => {
+			console.log('获取应用目录内容:', res);
+		});
+	}, []);
+
 	return (
 		<Layout className="layout" style={{ minHeight: '100vh' }}>
 			<Header

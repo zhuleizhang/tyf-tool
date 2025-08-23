@@ -94,13 +94,13 @@ const ServiceWrapper: React.FC<{ children: React.ReactNode }> = ({
 			setServiceStarting(true);
 			setError(null);
 			const res = await window.electronAPI?.startPythonService();
-			if (res) {
-				console.log('Python服务启动成功');
+			if (res?.[0]) {
+				console.log('Python服务启动成功', res?.[1], res?.[2]);
 				// 启动服务成功后开始轮询检查服务状态
 				await checkServiceStatus();
 			} else {
-				console.log('Python服务启动失败');
-				setError('服务启动失败');
+				console.log('Python服务启动失败', res?.[1], res?.[2]);
+				setError(JSON.stringify(res?.[1]) || '服务启动失败');
 			}
 		} catch (err) {
 			console.log('Python服务启动错误', err);
