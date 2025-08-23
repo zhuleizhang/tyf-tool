@@ -225,7 +225,7 @@ const ServiceWrapper: React.FC<{ children: React.ReactNode }> = ({
 							? '正在启动Python服务，请稍候...'
 							: serviceStopping
 							? '正在停止Python服务，请稍候...'
-							: '服务启动中，请稍候...'}
+							: '服务启动中，大约需要1分钟，请稍候...'}
 					</Text>
 				</div>
 			</div>

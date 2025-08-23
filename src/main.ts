@@ -1136,7 +1136,7 @@ ipcMain.handle('startPythonService', async () => {
 	try {
 		if (pythonOCRService) {
 			logToFile('Python服务已经在运行');
-			return true; // 服务已经在运行
+			return [true]; // 服务已经在运行
 		}
 
 		// 获取适合当前系统和架构的可执行文件路径
