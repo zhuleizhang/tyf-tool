@@ -18,12 +18,12 @@ on:
       - "src/**"
       - "package.json"
       - "webpack.config.js"
-  pull_request:
-    branches: [main, master]
-    paths:
-      - "src/**"
-      - "package.json"
-      - "webpack.config.js"
+  # pull_request:
+  #   branches: [main, master]
+  #   paths:
+  #     - "src/**"
+  #     - "package.json"
+  #     - "webpack.config.js"
   # 允许手动触发工作流
   workflow_dispatch:
 

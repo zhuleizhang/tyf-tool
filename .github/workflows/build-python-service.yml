@@ -5,10 +5,10 @@ on:
     branches: [main, master]
     paths:
       - "tyf-tool-service/**" # 仅当tyf-tool-service目录有变更时触发
-  pull_request:
-    branches: [main, master]
-    paths:
-      - "tyf-tool-service/**" # 仅当tyf-tool-service目录有变更时触发
+  # pull_request:
+  #   branches: [main, master]
+  #   paths:
+  #     - "tyf-tool-service/**" # 仅当tyf-tool-service目录有变更时触发
   # 允许手动触发工作流
   workflow_dispatch:
 
