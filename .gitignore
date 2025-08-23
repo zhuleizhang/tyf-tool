@@ -135,3 +135,4 @@ tyf-tool-service/build
 __pycache__/
 *.py[cod]
 *$py.class
+service_build
