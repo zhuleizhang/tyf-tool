@@ -44,6 +44,13 @@ jobs:
           path: temp_artifacts
           github_token: ${{ secrets.GITHUB_TOKEN }}
           if_no_artifact_found: warn
+          # 如果需要从其他仓库下载，确保这是正确的仓库
+          # repo: 正确的仓库名称，例如 your-username/your-repo
+          # 其他可能有用的配置
+          workflow_conclusion: "" # 尝试获取任何状态的运行
+          branch: "" # 尝试从任何分支获取
+          check_artifacts: true
+          search_artifacts: true
 
       # 确保service_build目录存在
       - name: 创建service_build目录
@@ -110,6 +117,10 @@ jobs:
           path: temp_artifacts
           github_token: ${{ secrets.GITHUB_TOKEN }}
           if_no_artifact_found: warn
+          workflow_conclusion: "" # 尝试获取任何状态的运行
+          branch: "" # 尝试从任何分支获取
+          check_artifacts: true
+          search_artifacts: true
 
       # 确保service_build目录存在
       - name: 创建service_build目录
@@ -176,6 +187,10 @@ jobs:
           path: temp_artifacts
           github_token: ${{ secrets.GITHUB_TOKEN }}
           if_no_artifact_found: warn
+          workflow_conclusion: "" # 尝试获取任何状态的运行
+          branch: "" # 尝试从任何分支获取
+          check_artifacts: true
+          search_artifacts: true
 
       # 确保service_build目录存在
       - name: 创建service_build目录
