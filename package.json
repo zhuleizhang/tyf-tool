@@ -58,7 +58,9 @@
         "zip"
       ],
       "icon": "src/assets/logo.icns",
-      "category": "public.app-category.utilities"
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "nsis": {
       "oneClick": false,
