@@ -1,6 +1,6 @@
 {
   "name": "tyf-tool",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "🍑 的工具箱",
   "main": "dist/main.js",
   "scripts": {

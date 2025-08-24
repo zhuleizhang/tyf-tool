@@ -1084,49 +1084,94 @@ logToFile('NODE_ENV', process.env.NODE_ENV);
 const killPythonService = () => {
 	if (pythonOCRService) {
 		logToFile('尝试停止Python服务');
+
+		// 保存PID以便后续使用
+		const pid = pythonOCRService.pid;
+		logToFile(`Python服务PID: ${pid}`);
+
 		// Windows上可能需要使用taskkill强制结束进程
 		if (isWindows) {
 			logToFile('Windows系统：已发送kill信号');
 			// 首先尝试正常结束进程
 			const result = pythonOCRService.kill();
-			if (result) {
-				logToFile('Windows系统：pythonOCRService kill 成功');
-			} else {
-				logToFile('Windows系统：pythonOCRService kill 失败');
-			}
+			logToFile(
+				`Windows系统：pythonOCRService kill ${result ? '成功' : '失败'}`
+			);
 
-			// 如果普通的kill失败，使用taskkill强制终止进程
-			const pid = pythonOCRService.pid;
-			if (pid) {
-				logToFile(
-					`Windows系统：尝试使用taskkill强制终止进程 PID: ${pid}`
-				);
-				try {
-					// 使用/F参数强制终止进程，/T参数终止所有子进程
-					const { exec } = require('child_process');
+			// 无论kill()结果如何，都使用更可靠的方法确保进程终止
+			try {
+				// 导入exec
+				const { exec } = require('child_process');
+
+				// 方法1：如果知道PID，仍尝试通过PID终止
+				if (pid) {
+					// 在尝试之前先检查进程是否存在
 					exec(
-						`taskkill /F /T /PID ${pid}`,
+						`tasklist /FI "PID eq ${pid}"`,
 						(error: any, stdout: any, stderr: any) => {
-							if (error) {
+							if (!error && stdout.includes(pid.toString())) {
 								logToFile(
-									`Windows系统：taskkill执行失败: ${error.message}`
+									`Windows系统：确认PID ${pid}仍在运行，尝试终止`
 								);
-								return;
-							}
-							if (stderr) {
+								exec(
+									`taskkill /F /PID ${pid} /T`,
+									(
+										killError: any,
+										killStdout: any,
+										killStderr: any
+									) => {
+										if (killStderr) {
+											logToFile(
+												`Windows系统：通过PID终止失败: `,
+												killStderr
+											);
+										}
+										if (killError) {
+											logToFile(
+												`Windows系统：通过PID终止失败:`,
+												killError
+											);
+										} else {
+											logToFile(
+												`Windows系统：通过PID终止结果: `,
+												killStdout
+											);
+										}
+									}
+								);
+							} else {
 								logToFile(
-									`Windows系统：taskkill错误: ${stderr}`
+									`Windows系统：PID ${pid}已不存在，无需终止`
 								);
-								return;
 							}
-							logToFile(`Windows系统：taskkill成功: ${stdout}`);
 						}
 					);
-				} catch (e) {
-					logToFile(`Windows系统：执行taskkill时发生异常: ${e}`);
 				}
-			} else {
-				logToFile('Windows系统：无法获取进程PID，无法强制终止');
+
+				// 方法2：使用进程名称终止所有相关Python进程
+				logToFile('Windows系统：尝试通过映像名称终止Python进程');
+				exec(
+					'taskkill /F /IM tyf_tool_service.exe /T',
+					(error: any, stdout: any, stderr: any) => {
+						if (error) {
+							logToFile(
+								`Windows系统：通过映像名称终止失败: ${error.message}`
+							);
+							// 失败后尝试终止所有python进程（不推荐在有其他Python应用的环境中使用）
+							// exec('taskkill /F /IM python.exe /T');
+						} else {
+							logToFile(
+								`Windows系统：通过映像名称终止结果: ${stdout}`
+							);
+						}
+					}
+				);
+			} catch (e) {
+				logToFile(
+					`Windows系统：执行进程终止命令时发生异常: ${JSON.stringify(
+						e
+					)}`
+				);
 			}
 		} else {
 			logToFile('Mac/Linux系统：已发送SIGTERM信号');
@@ -1146,6 +1191,7 @@ const killPythonService = () => {
 			}
 		}
 
+		// 设置为null，表示服务已经终止
 		pythonOCRService = null;
 		logToFile('Python服务已停止');
 	}
