@@ -1066,21 +1066,6 @@ function cleanupTempDirectory() {
 	}
 }
 
-// 应用退出时清理资源
-app.on('before-quit', async () => {
-	console.log('应用退出，清理资源');
-	logToFile('===== 应用退出，开始清理资源 =====');
-	cleanupTempDirectory();
-	logToFile('临时目录已清理');
-	if (pythonOCRService) {
-		console.log('清理Python服务');
-		logToFile('正在终止Python服务');
-		pythonOCRService.kill();
-		pythonOCRService = null;
-		logToFile('Python服务已终止');
-	}
-	logToFile('===== 应用退出完成 =====');
-});
 // Python服务进程引用
 let pythonOCRService: ChildProcess | null = null;
 const PYTHON_SERVICE_PORT = 8000;
@@ -1095,6 +1080,88 @@ console.log('架构:', process.arch);
 
 console.log(app.getAppPath());
 logToFile('NODE_ENV', process.env.NODE_ENV);
+
+const killPythonService = () => {
+	if (pythonOCRService) {
+		logToFile('尝试停止Python服务');
+		// Windows上可能需要使用taskkill强制结束进程
+		if (isWindows) {
+			logToFile('Windows系统：已发送kill信号');
+			// 首先尝试正常结束进程
+			const result = pythonOCRService.kill();
+			if (result) {
+				logToFile('Windows系统：pythonOCRService kill 成功');
+			} else {
+				logToFile('Windows系统：pythonOCRService kill 失败');
+
+				// 如果普通的kill失败，使用taskkill强制终止进程
+				const pid = pythonOCRService.pid;
+				if (pid) {
+					logToFile(
+						`Windows系统：尝试使用taskkill强制终止进程 PID: ${pid}`
+					);
+					try {
+						// 使用/F参数强制终止进程，/T参数终止所有子进程
+						const { exec } = require('child_process');
+						exec(
+							`taskkill /F /T /PID ${pid}`,
+							(error: any, stdout: any, stderr: any) => {
+								if (error) {
+									logToFile(
+										`Windows系统：taskkill执行失败: ${error.message}`
+									);
+									return;
+								}
+								if (stderr) {
+									logToFile(
+										`Windows系统：taskkill错误: ${stderr}`
+									);
+									return;
+								}
+								logToFile(
+									`Windows系统：taskkill成功: ${stdout}`
+								);
+							}
+						);
+					} catch (e) {
+						logToFile(`Windows系统：执行taskkill时发生异常: ${e}`);
+					}
+				} else {
+					logToFile('Windows系统：无法获取进程PID，无法强制终止');
+				}
+			}
+		} else {
+			logToFile('Mac/Linux系统：已发送SIGTERM信号');
+			// Mac和Linux可以使用SIGTERM信号
+			const result = pythonOCRService.kill('SIGTERM');
+			if (result) {
+				logToFile('Mac/Linux系统：pythonOCRService kill 成功');
+			} else {
+				logToFile('Mac/Linux系统：pythonOCRService kill 失败');
+				// 如果SIGTERM失败，尝试SIGKILL信号
+				const killResult = pythonOCRService.kill('SIGKILL');
+				logToFile(
+					`Mac/Linux系统：发送SIGKILL信号${
+						killResult ? '成功' : '失败'
+					}`
+				);
+			}
+		}
+
+		pythonOCRService = null;
+		logToFile('Python服务已停止');
+	}
+};
+
+// 应用退出时清理资源
+app.on('before-quit', async () => {
+	console.log('应用退出，清理资源');
+	logToFile('===== 应用退出，开始清理资源 =====');
+	cleanupTempDirectory();
+	logToFile('临时目录已清理');
+	killPythonService();
+	logToFile('===== 应用退出完成 =====');
+});
 
 // 根据系统和架构选择Python服务路径
 const getPythonServicePath = () => {
@@ -1226,27 +1293,7 @@ ipcMain.handle('startPythonService', async () => {
 ipcMain.handle('stopPythonService', async () => {
 	try {
 		if (pythonOCRService) {
-			logToFile('尝试停止Python服务');
-			// Windows上可能需要使用taskkill强制结束进程
-			if (isWindows) {
-				// 首先尝试正常结束进程
-				pythonOCRService.kill();
-				logToFile('Windows系统：已发送kill信号');
-
-				// 给一点时间让进程正常退出
-				await new Promise((resolve) => setTimeout(resolve, 500));
-
-				// 如果进程仍在运行，可以考虑使用更强力的方法
-				// 注意：这部分可能需要额外的系统权限
-				// 如果你需要这部分功能，可以使用Node的child_process.exec执行taskkill命令
-			} else {
-				// Mac和Linux可以使用SIGTERM信号
-				pythonOCRService.kill('SIGTERM');
-				logToFile('Mac/Linux系统：已发送SIGTERM信号');
-			}
-
-			pythonOCRService = null;
-			logToFile('Python服务已停止');
+			killPythonService();
 		} else {
 			logToFile('无需停止Python服务：服务未运行');
 		}
