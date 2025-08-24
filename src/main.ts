@@ -1093,42 +1093,40 @@ const killPythonService = () => {
 				logToFile('Windows系统：pythonOCRService kill 成功');
 			} else {
 				logToFile('Windows系统：pythonOCRService kill 失败');
+			}
 
-				// 如果普通的kill失败，使用taskkill强制终止进程
-				const pid = pythonOCRService.pid;
-				if (pid) {
-					logToFile(
-						`Windows系统：尝试使用taskkill强制终止进程 PID: ${pid}`
-					);
-					try {
-						// 使用/F参数强制终止进程，/T参数终止所有子进程
-						const { exec } = require('child_process');
-						exec(
-							`taskkill /F /T /PID ${pid}`,
-							(error: any, stdout: any, stderr: any) => {
-								if (error) {
-									logToFile(
-										`Windows系统：taskkill执行失败: ${error.message}`
-									);
-									return;
-								}
-								if (stderr) {
-									logToFile(
-										`Windows系统：taskkill错误: ${stderr}`
-									);
-									return;
-								}
+			// 如果普通的kill失败，使用taskkill强制终止进程
+			const pid = pythonOCRService.pid;
+			if (pid) {
+				logToFile(
+					`Windows系统：尝试使用taskkill强制终止进程 PID: ${pid}`
+				);
+				try {
+					// 使用/F参数强制终止进程，/T参数终止所有子进程
+					const { exec } = require('child_process');
+					exec(
+						`taskkill /F /T /PID ${pid}`,
+						(error: any, stdout: any, stderr: any) => {
+							if (error) {
 								logToFile(
-									`Windows系统：taskkill成功: ${stdout}`
+									`Windows系统：taskkill执行失败: ${error.message}`
 								);
+								return;
 							}
-						);
-					} catch (e) {
-						logToFile(`Windows系统：执行taskkill时发生异常: ${e}`);
-					}
-				} else {
-					logToFile('Windows系统：无法获取进程PID，无法强制终止');
+							if (stderr) {
+								logToFile(
+									`Windows系统：taskkill错误: ${stderr}`
+								);
+								return;
+							}
+							logToFile(`Windows系统：taskkill成功: ${stdout}`);
+						}
+					);
+				} catch (e) {
+					logToFile(`Windows系统：执行taskkill时发生异常: ${e}`);
 				}
+			} else {
+				logToFile('Windows系统：无法获取进程PID，无法强制终止');
 			}
 		} else {
 			logToFile('Mac/Linux系统：已发送SIGTERM信号');
