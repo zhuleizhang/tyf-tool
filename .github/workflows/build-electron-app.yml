@@ -102,74 +102,81 @@ jobs:
           retention-days: 7
 
   # 构建Mac Intel版本
-  # build-mac-intel:
-  #   runs-on: macos-12 # 使用Intel芯片的macOS运行器
-  #   steps:
-  #     - name: 检出代码
-  #       uses: actions/checkout@v4
+  build-mac-intel:
+    # runs-on: macos-12 # 使用Intel芯片的macOS运行器
+    runs-on: macos-13 # 或 macos-12
+    strategy:
+      matrix:
+        architecture: [x64] # 强制使用Intel架构（x64）
+    steps:
+      - name: Check architecture
+        run: uname -m # 验证输出为x86_64（即Intel）
 
-  #     # 下载Python服务Mac Intel构建产物
-  #     - name: 下载Python服务Mac Intel构建产物
-  #       uses: dawidd6/action-download-artifact@v2
-  #       with:
-  #         workflow: build-python-service.yml
-  #         name: mac-intel-binaries
-  #         path: temp_artifacts
-  #         github_token: ${{ secrets.GITHUB_TOKEN }}
-  #         if_no_artifact_found: warn
-  #         workflow_conclusion: "" # 尝试获取任何状态的运行
-  #         branch: "" # 尝试从任何分支获取
-  #         check_artifacts: true
-  #         search_artifacts: true
+      - name: 检出代码
+        uses: actions/checkout@v4
 
-  #     # 确保service_build目录存在
-  #     - name: 创建service_build目录
-  #       run: mkdir -p service_build
+      # 下载Python服务Mac Intel构建产物
+      - name: 下载Python服务Mac Intel构建产物
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: build-python-service.yml
+          name: mac-intel-binaries
+          path: temp_artifacts
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          if_no_artifact_found: warn
+          workflow_conclusion: "" # 尝试获取任何状态的运行
+          branch: "" # 尝试从任何分支获取
+          check_artifacts: true
+          search_artifacts: true
 
-  #     # 解压并移动文件到service_build
-  #     - name: 处理Python服务文件
-  #       run: |
-  #         if [ -d "temp_artifacts" ] && [ "$(ls -A temp_artifacts)" ]; then
-  #           # 创建临时目录用于解压
-  #           mkdir -p temp_extracted
+      # 确保service_build目录存在
+      - name: 创建service_build目录
+        run: mkdir -p service_build
 
-  #           # 查找并解压所有zip文件
-  #           for zipfile in temp_artifacts/*.zip; do
-  #             if [ -f "$zipfile" ]; then
-  #               echo "Extracting $zipfile to temp_extracted"
-  #               unzip -o "$zipfile" -d temp_extracted
-  #             fi
-  #           done
+      # 解压并移动文件到service_build
+      - name: 处理Python服务文件
+        run: |
+          if [ -d "temp_artifacts" ] && [ "$(ls -A temp_artifacts)" ]; then
+            # 创建临时目录用于解压
+            mkdir -p temp_extracted
 
-  #           # 移动解压后的文件到service_build
-  #           if [ -d "temp_extracted" ] && [ "$(ls -A temp_extracted)" ]; then
-  #             cp -R temp_extracted/* service_build/
-  #           fi
+            # 查找并解压所有zip文件
+            for zipfile in temp_artifacts/*.zip; do
+              if [ -f "$zipfile" ]; then
+                echo "Extracting $zipfile to temp_extracted"
+                unzip -o "$zipfile" -d temp_extracted
+              fi
+            done
 
-  #           # 复制任何非zip文件
-  #           find temp_artifacts -type f -not -name "*.zip" -exec cp {} service_build/ \;
-  #         else
-  #           echo "No Python service artifacts found, continuing without them"
-  #         fi
+            # 移动解压后的文件到service_build
+            if [ -d "temp_extracted" ] && [ "$(ls -A temp_extracted)" ]; then
+              cp -R temp_extracted/* service_build/
+            fi
 
-  #     - name: 设置Node.js
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 18.20.8
-  #         cache: "npm"
+            # 复制任何非zip文件
+            find temp_artifacts -type f -not -name "*.zip" -exec cp {} service_build/ \;
+          else
+            echo "No Python service artifacts found, continuing without them"
+          fi
 
-  #     - name: 安装依赖
-  #       run: npm ci
+      - name: 设置Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.20.8
+          cache: "npm"
 
-  #     - name: 构建Mac Intel版本
-  #       run: npm run package:mac
+      - name: 安装依赖
+        run: npm ci
 
-  #     - name: 上传Mac Intel构建结果
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: mac-intel-app
-  #         path: dist/*.dmg
-  #         retention-days: 7
+      - name: 构建Mac Intel版本
+        run: npm run package:mac
+
+      - name: 上传Mac Intel构建结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-intel-app
+          path: dist/*.dmg
+          retention-days: 7
 
   # 构建Mac ARM版本
   build-mac-arm:
