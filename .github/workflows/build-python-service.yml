@@ -42,7 +42,7 @@ jobs:
         run: |
           cd tyf-tool-service
           # 修改spec文件中的target_arch
-          sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
+          # sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
           PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-intel
           cp -f dist/tyf_tool_service ../dist/mac-intel/
@@ -76,7 +76,7 @@ jobs:
         run: |
           cd tyf-tool-service
           # 确保target_arch为arm64
-          sed -i '' 's/target_arch=None/target_arch="arm64"/' tyf_tool_service.spec
+          # sed -i '' 's/target_arch=None/target_arch="arm64"/' tyf_tool_service.spec
           PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-arm
           cp -f dist/tyf_tool_service ../dist/mac-arm/
@@ -109,7 +109,7 @@ jobs:
       - name: 构建Windows版本
         run: |
           cd tyf-tool-service
-          pyinstaller tyf_tool_service.spec
+          set PYTHONHASHSEED=1 && pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/windows
           copy dist\tyf_tool_service.exe ..\dist\windows\
 
