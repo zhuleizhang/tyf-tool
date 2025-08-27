@@ -40,6 +40,7 @@ jobs:
 
       - name: 构建Mac Intel版本
         run: |
+          # 确认环境变量生效
           echo "部署目标版本: $MACOSX_DEPLOYMENT_TARGET"
           cd tyf-tool-service
           # 修改spec文件中的target_arch
@@ -47,6 +48,7 @@ jobs:
           PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-intel
           cp -f dist/tyf_tool_service ../dist/mac-intel/
+        # 可选：将环境变量定义为步骤级变量，确保全局生效
         env:
           MACOSX_DEPLOYMENT_TARGET: 10.13
 
