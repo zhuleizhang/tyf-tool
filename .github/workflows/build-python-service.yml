@@ -40,12 +40,15 @@ jobs:
 
       - name: 构建Mac Intel版本
         run: |
+          echo "部署目标版本: $MACOSX_DEPLOYMENT_TARGET"
           cd tyf-tool-service
           # 修改spec文件中的target_arch
           # sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
           PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-intel
           cp -f dist/tyf_tool_service ../dist/mac-intel/
+        env:
+          MACOSX_DEPLOYMENT_TARGET: 10.13
 
       - name: 上传Mac Intel构建结果
         uses: actions/upload-artifact@v4
