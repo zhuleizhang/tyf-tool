@@ -50,6 +50,7 @@ jobs:
       - name: 安装依赖
         run: |
           cd tyf-tool-service
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: 构建Mac Intel版本
