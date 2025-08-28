@@ -105,15 +105,15 @@ jobs:
   build-mac-intel:
     # runs-on: macos-12 # 使用Intel芯片的macOS运行器
     runs-on: macos-13 # 或 macos-12
-    strategy:
-      matrix:
-        architecture: [x64] # 强制使用Intel架构（x64）
     steps:
-      - name: Check architecture
-        run: uname -m # 验证输出为x86_64（即Intel）
-
       - name: 检出代码
         uses: actions/checkout@v4
+
+      - name: 打印芯片架构信息
+        run: |
+          # 检查CPU架构
+          echo "CPU架构: $(uname -m)"
+          echo "芯片: $(sysctl -n machdep.cpu.brand_string)"
 
       # 下载Python服务Mac Intel构建产物
       - name: 下载Python服务Mac Intel构建产物
@@ -184,6 +184,12 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+
+      - name: 打印芯片架构信息
+        run: |
+          # 检查CPU架构
+          echo "CPU架构: $(uname -m)"
+          echo "芯片: $(sysctl -n machdep.cpu.brand_string)"
 
       # 下载Python服务Mac ARM构建产物
       - name: 下载Python服务Mac ARM构建产物
