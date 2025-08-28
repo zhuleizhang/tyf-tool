@@ -16,56 +16,38 @@ jobs:
   # 构建Mac Intel版本
   build-mac-intel:
     # runs-on: macos-11 # 使用较旧的macOS运行器
-    runs-on: macos-13 # 或 macos-12
-    strategy:
-      matrix:
-        architecture: [x64] # 强制使用Intel架构（x64）
+    runs-on: macos-13 # 使用Intel架构的macOS 13 runner
+    # 对于大型Intel运行器(需要特定计划)，可以使用:
+    # runs-on: macos-13-large
     steps:
-      - name: Check architecture
-        run: uname -m # 验证输出为x86_64（即Intel）
-
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 手动安装针对macOS 10.13的Python 3.9
+      - name: 打印芯片架构信息
         run: |
-          # 下载针对macOS 10.13编译的Python 3.9.18（官网明确支持10.13+的版本）
-          curl -O https://www.python.org/ftp/python/3.9.18/python-3.9.18-macosx10.9.pkg
-          # 安装到指定目录（避免覆盖系统Python）
-          sudo installer -pkg python-3.9.18-macosx10.9.pkg -target /
-          # 将安装的Python添加到PATH（确保优先使用该版本）
-          echo "/Library/Frameworks/Python.framework/Versions/3.9/bin" >> $GITHUB_PATH
-          # 验证Python版本及部署目标
-          python3.9 --version
-          otool -l /Library/Frameworks/Python.framework/Versions/3.9/lib/libpython3.9.dylib | grep -A 3 LC_VERSION_MIN_MACOSX
+          # 检查CPU架构
+          echo "CPU架构: $(uname -m)"
+          echo "芯片: $(sysctl -n machdep.cpu.brand_string)"
 
-      - name: 安装依赖（使用手动安装的Python）
+      - name: 设置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: "pip"
+
+      - name: 安装依赖
         run: |
           cd tyf-tool-service
-          # 明确使用手动安装的pip3.9
-          pip3.9 install -r requirements.txt
-          # 升级PyInstaller到最新版（确保兼容性）
-          pip3.9 install --upgrade pyinstaller
+          pip install -r requirements.txt
 
-      - name: 构建Mac Intel版本（强制低版本兼容）
+      - name: 构建Mac Intel版本
         run: |
           cd tyf-tool-service
-          # 全程携带部署目标变量，确保编译链路一致
-          export MACOSX_DEPLOYMENT_TARGET=10.13
-          echo "部署目标版本: $MACOSX_DEPLOYMENT_TARGET"
-          # 修改spec文件架构
-          sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
-          # 使用手动安装的Python和PyInstaller打包
+          # 确保target_arch为x86_64
+          # sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
           PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-intel
           cp -f dist/tyf_tool_service ../dist/mac-intel/
-        env:
-          MACOSX_DEPLOYMENT_TARGET: 10.13
-
-      - name: 验证构建产物的部署目标
-        run: |
-          # 检查可执行文件的最低兼容版本
-          otool -l dist/mac-intel/tyf_tool_service | grep -A 3 LC_VERSION_MIN_MACOSX
 
       - name: 上传Mac Intel构建结果
         uses: actions/upload-artifact@v4
@@ -80,6 +62,12 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+
+      - name: 打印芯片架构信息
+        run: |
+          # 检查CPU架构
+          echo "CPU架构: $(uname -m)"
+          echo "芯片: $(sysctl -n machdep.cpu.brand_string)"
 
       - name: 设置Python
         uses: actions/setup-python@v5
