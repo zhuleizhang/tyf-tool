@@ -29,11 +29,23 @@ jobs:
           echo "CPU架构: $(uname -m)"
           echo "芯片: $(sysctl -n machdep.cpu.brand_string)"
 
-      - name: 设置Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.9"
-          cache: "pip"
+      # - name: 设置Python
+      #   uses: actions/setup-python@v5
+      #   with:
+      #     python-version: "3.9"
+      #     cache: "pip"
+
+      - name: Install Python 3.9 (compatible with macOS 12)
+        run: |
+          # 安装针对macOS 12的Python 3.9（使用pyenv或官方安装包）
+          brew install pyenv
+          pyenv install 3.9.18  # 选择一个明确支持旧版macOS的3.9版本
+          pyenv global 3.9.18
+          echo "$(pyenv root)/shims" >> $GITHUB_PATH
+
+      - name: Set deployment target
+        run: |
+          echo "MACOSX_DEPLOYMENT_TARGET=12.0" >> $GITHUB_ENV
 
       - name: 安装依赖
         run: |
