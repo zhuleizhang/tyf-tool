@@ -4,7 +4,6 @@ const fs = require('fs');
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
 import { spawn, ChildProcess } from 'child_process';
-import axios from 'axios';
 import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone';
 import utc from 'dayjs/plugin/utc';
@@ -1352,10 +1351,10 @@ ipcMain.handle('stopPythonService', async () => {
 // 检查Python OCR服务是否在运行
 ipcMain.handle('isPythonServiceRunning', async () => {
 	try {
-		const response = await axios.get(
+		const response = await fetch(
 			`http://localhost:${PYTHON_SERVICE_PORT}/docs`
 		);
-		return response.status === 200;
+		return response.ok && response.status === 200;
 	} catch (error) {
 		return false;
 	}
