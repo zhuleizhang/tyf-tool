@@ -2,11 +2,34 @@ const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 const fs = require('fs'); // 添加fs模块
 
-module.exports = {
+const isDev = process.env.NODE_ENV === 'development';
+
+/**
+ * @type {import('webpack').Configuration}
+ */
+const baseConfig = {
 	mode: process.env.NODE_ENV || 'development',
+	...(isDev
+		? {
+				devtool: 'source-map',
+		  }
+		: {}),
+	resolve: {
+		extensions: ['.tsx', '.ts', '.js'],
+		alias: {
+			// 添加这个别名配置
+			'@': path.resolve(__dirname, 'src'),
+		},
+	},
+};
+
+/**
+ * @type {import('webpack').Configuration}
+ */
+const rendererConfig = {
+	...baseConfig,
 	entry: './src/App.tsx',
 	target: 'electron-renderer',
-	devtool: 'source-map',
 	module: {
 		rules: [
 			{
@@ -32,23 +55,9 @@ module.exports = {
 			},
 		],
 	},
-	resolve: {
-		extensions: ['.tsx', '.ts', '.js'],
-		alias: {
-			// 添加这个别名配置
-			'@': path.resolve(__dirname, 'src'),
-		},
-	},
 	output: {
 		filename: 'App.js',
 		path: path.resolve(__dirname, 'dist'),
-		libraryTarget: 'window',
-		library: 'App',
-		// 添加以下配置防止CommonJS导出
-		environment: {
-			arrowFunction: false,
-			module: false,
-		},
 	},
 	plugins: [
 		new CopyPlugin({
@@ -101,3 +110,43 @@ module.exports = {
 		}),
 	],
 };
+
+/**
+ * @type {import('webpack').Configuration}
+ */
+const mainConfig = {
+	...baseConfig,
+	mode: process.env.NODE_ENV || 'development',
+	target: 'electron-main',
+	entry: './src/main.ts',
+	module: {
+		rules: [
+			{
+				test: /\.(ts|tsx)$/,
+				exclude: /node_modules/,
+				use: {
+					loader: 'babel-loader',
+					options: {
+						presets: [
+							'@babel/preset-env',
+							'@babel/preset-typescript',
+						],
+					},
+				},
+			},
+		],
+	},
+	resolve: {
+		extensions: ['.tsx', '.ts', '.js'],
+		alias: {
+			// 添加这个别名配置
+			'@': path.resolve(__dirname, 'src'),
+		},
+	},
+	output: {
+		filename: 'main.js',
+		path: path.resolve(__dirname, 'dist'),
+	},
+};
+
+module.exports = [mainConfig, rendererConfig];
