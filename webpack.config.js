@@ -1,6 +1,7 @@
 const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
-const fs = require('fs'); // 添加fs模块
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const fs = require('fs');
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -20,6 +21,11 @@ const baseConfig = {
 			// 添加这个别名配置
 			'@': path.resolve(__dirname, 'src'),
 		},
+	},
+	// 启用优化，确保Tree Shaking生效
+	optimization: {
+		usedExports: true, // 标记未使用的导出
+		sideEffects: true, // 尊重package.json中的sideEffects标记
 	},
 };
 
@@ -56,18 +62,47 @@ const rendererConfig = {
 		],
 	},
 	output: {
-		filename: 'App.js',
+		filename: isDev ? '[name].js' : '[name].[contenthash:4].js', // 添加contenthash用于缓存优化
+		chunkFilename: isDev
+			? '[name].chunk.js'
+			: '[name].[contenthash:4].chunk.js', // 为代码分割的chunk添加命名
 		path: path.resolve(__dirname, 'dist'),
+		globalObject: 'this', // 添加这一行，使用'this'代替'global'
+	},
+	// 添加代码分割配置
+	optimization: {
+		...baseConfig.optimization,
+		splitChunks: {
+			chunks: 'all', // 对所有chunk启用分割
+			maxInitialRequests: 10, // 入口点的最大并行请求数
+			minSize: 20000, // 生成chunk的最小大小（bytes）
+			cacheGroups: {
+				vendors: {
+					test: /[\\/]node_modules[\\/]/, // 将node_modules中的模块打包到vendors chunk中
+					name: 'vendors',
+					priority: -10,
+					enforceSizeThreshold: 50000, // 强制执行分离的尺寸阈值
+				},
+				common: {
+					minChunks: 2, // 至少被两个chunk引用的模块
+					priority: -20,
+					reuseExistingChunk: true,
+					name: 'common',
+				},
+			},
+		},
+		runtimeChunk: 'single', // 将webpack运行时代码提取到单独的chunk
 	},
 	plugins: [
+		new HtmlWebpackPlugin({ template: './public/index.html' }),
 		new CopyPlugin({
 			patterns: (() => {
 				// 基本复制配置
 				const patterns = [
-					{
-						from: path.resolve(__dirname, 'index.html'),
-						to: path.resolve(__dirname, 'dist'),
-					},
+					// {
+					// 	from: path.resolve(__dirname, 'index.html'),
+					// 	to: path.resolve(__dirname, 'dist'),
+					// },
 					{
 						from: path.resolve(__dirname, 'preload.js'),
 						to: path.resolve(__dirname, 'dist'),
