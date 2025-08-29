@@ -59,6 +59,7 @@ jobs:
           # 确保target_arch为x86_64
           # sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
           # test
+          pip install --upgrade pyinstaller
           export MACOSX_DEPLOYMENT_TARGET=12.0
           PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-intel
