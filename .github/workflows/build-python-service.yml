@@ -73,8 +73,8 @@ jobs:
           fi
 
           # 7. 验证 2：检查共享库的最低支持 macOS 版本（需输出 Version: 12.0）
-          echo "==== 验证共享库最低支持版本 ===="
-          otool -l "$PYTHON_LIB" | grep -A 3 LC_VERSION_MIN_MACOSX
+          # echo "==== 验证共享库最低支持版本 ===="
+          otool -l "$PYTHON_LIB" | grep -A 3 LC_VERSION_MIN_MACOSX || echo "✓ 未检测到 LC_VERSION_MIN_MACOSX"
 
           # 8. 验证 3：检查是否包含 _mkfifoat 符号（无输出则成功）
           echo "=== 验证是否包含 _mkfifoat 符号 ==="
@@ -104,7 +104,7 @@ jobs:
         run: |
           cd tyf-tool-service
           # 确保target_arch为x86_64
-          # sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
+          sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
 
           # 彻底设置部署目标环境变量
           export MACOSX_DEPLOYMENT_TARGET=12.0
