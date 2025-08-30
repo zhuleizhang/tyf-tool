@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+import sys
+sys.setrecursionlimit(sys.getrecursionlimit() * 5)  # 将默认递归深度乘以5，足够应对复杂依赖
 
 a = Analysis(
     ['main.py'],
