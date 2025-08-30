@@ -25,6 +25,7 @@
 ## 配置环境变量
 
 ```bash
+# python@3.9
 # Python和pip命令别名
 alias python=python3
 alias pip=pip3
@@ -42,10 +43,29 @@ cd tyf-tool-service
 2. 安装依赖
 
 ```bash
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# 阿里云：https://mirrors.aliyun.com/pypi/simple/
+# 豆瓣：https://pypi.doubanio.com/simple/
+# 腾讯云：https://mirrors.cloud.tencent.com/pypi/simple/
+```
+
+or
+
+```bash
+# 1. 进入项目目录
+cd /Users/zhangzhulei/Desktop/projects/tyf-tool/tyf-tool-service
+
+# 2. 创建 Python 虚拟环境
+python3 -m venv venv
+
+# 3. 激活虚拟环境
+source venv/bin/activate
+
+# 4. 安装项目依赖
 pip install -r requirements.txt
 ```
 
-3. 收集依赖
+3. 收集依赖(可选)
 
 ```bash
 pip install pipreqs
@@ -82,7 +102,7 @@ curl -X POST "http://localhost:8000/api/v1/recognize" \
 ## 打包
 
 ```bash
-pip install pyinstaller
+# pip install pyinstaller -i https://pypi.tuna.tsinghua.edu.cn/simple
 pyinstaller --onefile --name tyf_tool_service main.py
 ```
 

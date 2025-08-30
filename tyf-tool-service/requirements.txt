@@ -1,7 +1,19 @@
+# 主要依赖
 easyocr==1.7.0
 fastapi==0.116.1
-numpy==2.0.2  # 改为当前可用的最高版本
+numpy==1.24.3  # 调整为兼容scipy的版本
 Pillow==10.2.0  # 降级到稳定版本
 pydantic==2.11.7
 pydantic_settings==2.10.1
 uvicorn==0.35.0
+
+# EasyOCR依赖
+torch==2.0.1
+torchvision==0.15.2
+opencv-python==4.8.1.78
+scipy==1.11.3  # 降级以兼容numpy
+python-bidi==0.4.2
+ninja==1.11.1
+
+# 打包工具
+pyinstaller==6.15.0

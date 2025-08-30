@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+import sys
+sys.setrecursionlimit(sys.getrecursionlimit() * 5)  # 将默认递归深度乘以5，足够应对复杂依赖
 
 a = Analysis(
     ['main.py'],
@@ -12,7 +13,6 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
-    optimize=0,
 )
 pyz = PYZ(a.pure)
 
@@ -25,7 +25,7 @@ exe = EXE(
     name='tyf_tool_service',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
+    strip=True,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
