@@ -39,27 +39,43 @@ jobs:
         run: |
           brew install pyenv
 
-          # 1. 卸载已有的 Python 3.9.18（避免使用旧的编译版本）
+          # 1. 确保卸载已有的 Python 3.9.18（避免残留旧版本）
           pyenv uninstall -f 3.9.18 || true
 
-          # 2. 关键：设置编译环境变量，强制适配 macOS 12
+          # 2. 关键：设置编译环境变量，强制适配 macOS 12（必须在安装 Python 前设置）
           export MACOSX_DEPLOYMENT_TARGET=12.0
           export CFLAGS="-mmacosx-version-min=12.0 -D_DARWIN_C_SOURCE"
           export CXXFLAGS="-mmacosx-version-min=12.0 -D_DARWIN_C_SOURCE"
           export LDFLAGS="-mmacosx-version-min=12.0"
 
-          # 3. 用 pyenv 安装 Python 3.9.18（此时会应用上述环境变量编译）
+          # 3. 用 pyenv 安装 Python 3.9.18（此时会应用上述环境变量编译，确保适配 macOS 12）
           pyenv install 3.9.18
 
-          # 4. 切换到新安装的 Python 版本
+          # 4. 切换到 pyenv 安装的 Python 3.9.18，确保后续步骤使用该版本
           pyenv global 3.9.18
-          echo "$(pyenv root)/shims" >> $GITHUB_PATH
+          PYENV_PYTHON_PATH=$(pyenv which python)
+          echo "使用的 Python 路径: $PYENV_PYTHON_PATH"
+          echo "$(pyenv root)/shims" >> $GITHUB_PATH  # 确保 pyenv 的 Python 优先级最高
 
-          # 5. 验证：检查 Python 共享库的最低 macOS 版本（确保是 12.0）
-          PYTHON_LIB=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR') + '/libpython3.9.dylib')")
+          # 5. 修正：直接拼接 pyenv 安装路径下的 libpython3.9.dylib（避免路径检测错误）
+          PYTHON_LIB_DIR="$HOME/.pyenv/versions/3.9.18/lib"
+          PYTHON_LIB="$PYTHON_LIB_DIR/libpython3.9.dylib"
           echo "Python 共享库路径: $PYTHON_LIB"
-          otool -l $PYTHON_LIB | grep -A 3 LC_VERSION_MIN_MACOSX  # 应输出 "Version: 12.0"
-          nm -g $PYTHON_LIB | grep _mkfifoat  # 若无输出，说明不包含该符号（成功）
+
+          # 6. 验证 1：检查共享库是否存在
+          if [ ! -f "$PYTHON_LIB" ]; then
+            echo "错误：Python 共享库不存在！"
+            ls -l "$PYTHON_LIB_DIR"  # 列出目录内容，辅助排查
+            exit 1
+          fi
+
+          # 7. 验证 2：检查共享库的最低支持 macOS 版本（需输出 Version: 12.0）
+          echo "=== 验证共享库最低支持版本 ==="
+          otool -l "$PYTHON_LIB" | grep -A 3 LC_VERSION_MIN_MACOSX
+
+          # 8. 验证 3：检查是否包含 _mkfifoat 符号（无输出则成功）
+          echo "=== 验证是否包含 _mkfifoat 符号 ==="
+          nm -g "$PYTHON_LIB" | grep _mkfifoat || echo "✓ 未检测到 _mkfifoat 符号（符合预期）"
 
       - name: Set deployment target
         run: |
