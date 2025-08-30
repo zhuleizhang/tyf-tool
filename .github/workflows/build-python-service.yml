@@ -51,7 +51,17 @@ jobs:
         run: |
           cd tyf-tool-service
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # pip install -r requirements.txt
+
+          rm -rf build/ dist/ __pycache__/
+          pip cache purge
+
+          # 重新安装依赖
+          pip install --no-cache-dir -r requirements.txt
+
+          # 自动确认卸载当前PyInstaller版本
+          pip uninstall --yes pyinstaller
+          pip install --no-cache-dir pyinstaller==5.13
 
       - name: 构建Mac Intel版本
         run: |
@@ -59,15 +69,11 @@ jobs:
           # 确保target_arch为x86_64
           # sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
 
-          # 清理PyInstaller缓存
-          rm -rf build/ dist/ __pycache__/
           # 彻底设置部署目标环境变量
           export MACOSX_DEPLOYMENT_TARGET=12.0
           export CFLAGS="-mmacosx-version-min=12.0"
           export CXXFLAGS="-mmacosx-version-min=12.0"
 
-          pip uninstall pyinstaller
-          pip install pyinstaller==5.13  # 这个版本对macOS 12兼容性较好
           PYTHONHASHSEED=1 pyinstaller --clean tyf_tool_service.spec
           mkdir -p ../dist/mac-intel
           cp -f dist/tyf_tool_service ../dist/mac-intel/
