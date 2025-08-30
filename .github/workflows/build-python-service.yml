@@ -38,13 +38,20 @@ jobs:
       - name: 安装依赖
         run: |
           cd tyf-tool-service
+          pip cache purge
           pip install -r requirements.txt
+          pip uninstall --yes pyinstaller
+          pip install --no-cache-dir pyinstaller==5.13
 
       - name: 构建Mac Intel版本
         run: |
           cd tyf-tool-service
           # 确保target_arch为x86_64
           sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
+          # 彻底设置部署目标环境变量
+          export MACOSX_DEPLOYMENT_TARGET=12.0
+          export CFLAGS="-mmacosx-version-min=12.0"
+          export CXXFLAGS="-mmacosx-version-min=12.0"
           PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-intel
           cp -f dist/tyf_tool_service ../dist/mac-intel/
