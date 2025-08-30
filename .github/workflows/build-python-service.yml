@@ -49,6 +49,7 @@ jobs:
           export LDFLAGS="-mmacosx-version-min=12.0"
 
           # 3. 用 pyenv 安装 Python 3.9.18（此时会应用上述环境变量编译，确保适配 macOS 12）
+          export PYTHON_CONFIGURE_OPTS="--enable-shared"
           pyenv install 3.9.18
 
           # 4. 切换到 pyenv 安装的 Python 3.9.18，确保后续步骤使用该版本
