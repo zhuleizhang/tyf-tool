@@ -29,89 +29,23 @@ jobs:
           echo "CPU架构: $(uname -m)"
           echo "芯片: $(sysctl -n machdep.cpu.brand_string)"
 
-      # - name: 设置Python
-      #   uses: actions/setup-python@v5
-      #   with:
-      #     python-version: "3.9"
-      #     cache: "pip"
-
-      - name: Install Python 3.9 (compiled for macOS 12)
-        run: |
-          brew install pyenv
-
-          # 1. 确保卸载已有的 Python 3.9.18（避免残留旧版本）
-          pyenv uninstall -f 3.9.18 || true
-          rm -rf ~/.pyenv/sources/3.9.18
-          rm -rf ~/.pyenv/versions/3.9.18
-
-          # 2. 关键：设置编译环境变量，强制适配 macOS 12（必须在安装 Python 前设置）
-          export MACOSX_DEPLOYMENT_TARGET=12.0
-          export CFLAGS="-mmacosx-version-min=12.0 -D_DARWIN_C_SOURCE"
-          export CXXFLAGS="-mmacosx-version-min=12.0 -D_DARWIN_C_SOURCE"
-          export LDFLAGS="-mmacosx-version-min=12.0"
-
-          # 3. 用 pyenv 安装 Python 3.9.18（此时会应用上述环境变量编译，确保适配 macOS 12）
-          export PYTHON_CONFIGURE_OPTS="--enable-shared"
-          pyenv install 3.9.18
-
-          # 4. 切换到 pyenv 安装的 Python 3.9.18，确保后续步骤使用该版本
-          pyenv global 3.9.18
-          PYENV_PYTHON_PATH=$(pyenv which python)
-          echo "使用的 Python 路径: $PYENV_PYTHON_PATH"
-          echo "$(pyenv root)/shims" >> $GITHUB_PATH  # 确保 pyenv 的 Python 优先级最高
-
-          # 5. 修正：直接拼接 pyenv 安装路径下的 libpython3.9.dylib（避免路径检测错误）
-          PYTHON_LIB_DIR="$HOME/.pyenv/versions/3.9.18/lib"
-          PYTHON_LIB="$PYTHON_LIB_DIR/libpython3.9.dylib"
-          echo "Python 共享库路径: $PYTHON_LIB"
-
-          # 6. 验证 1：检查共享库是否存在
-          if [ ! -f "$PYTHON_LIB" ]; then
-            echo "错误：Python 共享库不存在！"
-            ls -l "$PYTHON_LIB_DIR"  # 列出目录内容，辅助排查
-            exit 1
-          fi
-
-          # 7. 验证 2：检查共享库的最低支持 macOS 版本（需输出 Version: 12.0）
-          # echo "==== 验证共享库最低支持版本 ===="
-          otool -l "$PYTHON_LIB" | grep -A 3 LC_VERSION_MIN_MACOSX || echo "✓ 未检测到 LC_VERSION_MIN_MACOSX"
-
-          # 8. 验证 3：检查是否包含 _mkfifoat 符号（无输出则成功）
-          echo "=== 验证是否包含 _mkfifoat 符号 ==="
-          nm -g "$PYTHON_LIB" | grep _mkfifoat || echo "✓ 未检测到 _mkfifoat 符号（符合预期）"
-
-      - name: Set deployment target
-        run: |
-          echo "MACOSX_DEPLOYMENT_TARGET=12.0" >> $GITHUB_ENV
+      - name: 设置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: "pip"
 
       - name: 安装依赖
         run: |
           cd tyf-tool-service
-          python -m pip install --upgrade pip
-          # pip install -r requirements.txt
-
-          rm -rf build/ dist/ __pycache__/
-          pip cache purge
-
-          # 重新安装依赖
-          pip install --no-cache-dir -r requirements.txt
-
-          # 自动确认卸载当前PyInstaller版本
-          pip uninstall --yes pyinstaller
-          pip install --no-cache-dir pyinstaller==5.13
+          pip install -r requirements.txt
 
       - name: 构建Mac Intel版本
         run: |
           cd tyf-tool-service
           # 确保target_arch为x86_64
           sed -i '' 's/target_arch=None/target_arch="x86_64"/' tyf_tool_service.spec
-
-          # 彻底设置部署目标环境变量
-          export MACOSX_DEPLOYMENT_TARGET=12.0
-          export CFLAGS="-mmacosx-version-min=12.0"
-          export CXXFLAGS="-mmacosx-version-min=12.0"
-
-          PYTHONHASHSEED=1 pyinstaller --clean tyf_tool_service.spec
+          PYTHONHASHSEED=1 pyinstaller tyf_tool_service.spec
           mkdir -p ../dist/mac-intel
           cp -f dist/tyf_tool_service ../dist/mac-intel/
 
