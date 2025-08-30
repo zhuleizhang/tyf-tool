@@ -35,13 +35,29 @@ jobs:
       #     python-version: "3.9"
       #     cache: "pip"
 
-      - name: Install Python 3.9 (compatible with macOS 12)
+      - name: Install Python 3.9 (compiled for macOS 12)
         run: |
-          # 安装针对macOS 12的Python 3.9（使用pyenv或官方安装包）
-          brew install pyenv
-          pyenv install 3.9.18  # 选择一个明确支持旧版macOS的3.9版本
+          # 1. 卸载已有的 Python 3.9.18（避免使用旧的编译版本）
+          pyenv uninstall -f 3.9.18 || true
+
+          # 2. 关键：设置编译环境变量，强制适配 macOS 12
+          export MACOSX_DEPLOYMENT_TARGET=12.0
+          export CFLAGS="-mmacosx-version-min=12.0 -D_DARWIN_C_SOURCE"
+          export CXXFLAGS="-mmacosx-version-min=12.0 -D_DARWIN_C_SOURCE"
+          export LDFLAGS="-mmacosx-version-min=12.0"
+
+          # 3. 用 pyenv 安装 Python 3.9.18（此时会应用上述环境变量编译）
+          pyenv install 3.9.18
+
+          # 4. 切换到新安装的 Python 版本
           pyenv global 3.9.18
           echo "$(pyenv root)/shims" >> $GITHUB_PATH
+
+          # 5. 验证：检查 Python 共享库的最低 macOS 版本（确保是 12.0）
+          PYTHON_LIB=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR') + '/libpython3.9.dylib')")
+          echo "Python 共享库路径: $PYTHON_LIB"
+          otool -l $PYTHON_LIB | grep -A 3 LC_VERSION_MIN_MACOSX  # 应输出 "Version: 12.0"
+          nm -g $PYTHON_LIB | grep _mkfifoat  # 若无输出，说明不包含该符号（成功）
 
       - name: Set deployment target
         run: |
