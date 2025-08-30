@@ -37,6 +37,8 @@ jobs:
 
       - name: Install Python 3.9 (compiled for macOS 12)
         run: |
+          brew install pyenv
+
           # 1. 卸载已有的 Python 3.9.18（避免使用旧的编译版本）
           pyenv uninstall -f 3.9.18 || true
 
