@@ -42,6 +42,7 @@ jobs:
           # 1. 确保卸载已有的 Python 3.9.18（避免残留旧版本）
           pyenv uninstall -f 3.9.18 || true
           rm -rf ~/.pyenv/sources/3.9.18
+          rm -rf ~/.pyenv/versions/3.9.18
 
           # 2. 关键：设置编译环境变量，强制适配 macOS 12（必须在安装 Python 前设置）
           export MACOSX_DEPLOYMENT_TARGET=12.0
@@ -72,7 +73,7 @@ jobs:
           fi
 
           # 7. 验证 2：检查共享库的最低支持 macOS 版本（需输出 Version: 12.0）
-          echo "=== 验证共享库最低支持版本 ==="
+          echo "==== 验证共享库最低支持版本 ===="
           otool -l "$PYTHON_LIB" | grep -A 3 LC_VERSION_MIN_MACOSX
 
           # 8. 验证 3：检查是否包含 _mkfifoat 符号（无输出则成功）
