@@ -84,6 +84,13 @@ jobs:
           mkdir -p ../dist/mac-intel
           cp -f dist/tyf_tool_service ../dist/mac-intel/
 
+      - name: 上传Mac Intel构建结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-intel-binaries
+          path: dist/mac-intel
+          retention-days: 7
+
   # 构建Mac ARM版本
   build-mac-arm:
     runs-on: macos-14 # 使用ARM架构的macOS runner
