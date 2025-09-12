@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-const fs = require('fs');
+import * as fs from 'node:fs';
 import * as XLSX from 'xlsx';
 import * as ExcelJS from 'exceljs';
 import { spawn, ChildProcess } from 'child_process';
@@ -152,8 +152,21 @@ ipcMain.handle('select-file', async () => {
 // 处理Excel文件读取
 ipcMain.handle('read-excel', async (event: any, filePath: string) => {
 	try {
-		// 读取Excel文件时获取工作表范围
-		const workbook = XLSX.readFile(filePath);
+		// 首先检查文件是否存在
+		if (!fs.existsSync(filePath)) {
+			throw new Error(`文件不存在: ${filePath}`);
+		}
+
+		// 1. 首先尝试读取文件到内存
+		const fileData = fs.readFileSync(filePath);
+
+		// 2. 使用buffer模式读取，而不是让XLSX直接访问文件
+		const workbook = XLSX.read(fileData, {
+			type: 'buffer', // 关键改动：使用buffer模式而不是file模式
+			cellDates: true,
+			cellNF: true,
+		});
+
 		const sheetNames = workbook.SheetNames;
 		const excelData = sheetNames.map((sheetName) => {
 			const worksheet = workbook.Sheets[sheetName];
@@ -172,12 +185,20 @@ ipcMain.handle('read-excel', async (event: any, filePath: string) => {
 				headerRow, // 保留表头行供参考
 			};
 		});
-		// console.log(excelData, 'excelData');
 
 		return excelData;
-	} catch (error) {
-		logToFile('Error reading Excel file:', error);
-		throw error;
+	} catch (error: any) {
+		// 增强错误日志，包含更多上下文信息
+		logToFile('Error reading Excel file:', {
+			filePath,
+			errorMessage: error.message,
+			errorStack: error.stack,
+		});
+
+		// 将更友好的错误消息返回给渲染进程
+		const errorMessage = `无法读取Excel文件: ${filePath}\n${error.message}`;
+
+		throw new Error(errorMessage);
 	}
 });
 

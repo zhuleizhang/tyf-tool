@@ -85,9 +85,9 @@ const ExcelDiff: React.FC = () => {
 				setExcelData(data);
 				message.success('文件加载成功');
 			}
-		} catch (error) {
+		} catch (error: any) {
 			console.error('Error reading file:', error);
-			message.error('文件加载失败');
+			message.error(error?.message || '文件加载失败');
 		}
 		setLoading(false);
 	};
@@ -137,25 +137,20 @@ const ExcelDiff: React.FC = () => {
 
 			// 支持多个检查列的分析
 			checkColumns.forEach((checkColumn) => {
-				const groups = new Map<
-					string,
-					{ row: number; value: number }[]
-				>();
+				const groups = new Map<string, { row: number; value: any }[]>();
 
 				for (let i = startRow - 1; i < sheet.data.length; i++) {
 					const row = sheet.data[i];
 					const groupValue = row[groupColumn];
-					const checkValue = parseFloat(row[checkColumn]);
+					const checkValue = row[checkColumn];
 
-					if (!isNaN(checkValue)) {
-						if (!groups.has(groupValue)) {
-							groups.set(groupValue, []);
-						}
-						groups.get(groupValue)?.push({
-							row: i + 1,
-							value: checkValue,
-						});
+					if (!groups.has(groupValue)) {
+						groups.set(groupValue, []);
 					}
+					groups.get(groupValue)?.push({
+						row: i + 1,
+						value: checkValue,
+					});
 				}
 
 				groups.forEach((items, groupName) => {
@@ -176,6 +171,7 @@ const ExcelDiff: React.FC = () => {
 				});
 			});
 		});
+		console.log(analysisResults, 'analysisResults');
 
 		setResults(analysisResults);
 		setAnalysisPerformed(true);
