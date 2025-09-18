@@ -8,9 +8,9 @@ from openpyxl import load_workbook
 from PIL import Image
 from openpyxl.drawing.image import Image as XLImage
 
-# python simple_ocr.py /Users/bytedance/Downloads/好客来超市-商品统计.xlsx
+# python scripts/simple_ocr.py /Users/bytedance/Downloads/好客来超市-商品统计.xlsx
 '''
-python simple_ocr.py /Users/bytedance/Downloads/好客来超市-商品统计.xlsx --image-cols 1 3 5 --result-cols 2 4 6
+python scripts/simple_ocr.py /Users/bytedance/Downloads/好客来超市-商品统计.xlsx --image-cols 1 3 5 --result-cols 2 4 6
 
 这个命令会同时处理：
 - 第1列图片，结果写入第2列
