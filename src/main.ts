@@ -175,9 +175,45 @@ ipcMain.handle('read-excel', async (event: any, filePath: string) => {
 			// 计算实际列数（包含空列）
 			const columnCount = range.e.c + 1; // 列索引从0开始
 			// 修改：使用header: "A"选项获取列字母作为键
-			const data = XLSX.utils.sheet_to_json(worksheet, { header: 'A' });
+			const _data = XLSX.utils.sheet_to_json(worksheet, {
+				header: 'A',
+				defval: '', // 为空单元格设置默认值
+				range: 0, // 从第一行开始，不跳过任何行
+			});
+
+			// 手动处理每一行，包括空白行
+			const data: any[] = [];
+			for (let rowNum = range.s.r; rowNum <= range.e.r; rowNum++) {
+				const row: any = {};
+				let hasData = false; // 检查行是否有数据
+
+				for (let colNum = range.s.c; colNum <= range.e.c; colNum++) {
+					const cellAddress = XLSX.utils.encode_cell({
+						r: rowNum,
+						c: colNum,
+					});
+					const cell = worksheet[cellAddress];
+					const colName = XLSX.utils.encode_col(colNum);
+
+					if (
+						cell &&
+						cell.v !== undefined &&
+						cell.v !== null &&
+						cell.v !== ''
+					) {
+						row[colName] = cell.v;
+						hasData = true;
+					} else {
+						row[colName] = ''; // 空单元格设为空字符串
+					}
+				}
+
+				// 即使是空白行也要添加到数组中，保持索引一致
+				data.push(row);
+			}
+
 			// 移除第一行（表头行），保留数据行
-			const headerRow = data.shift();
+			const headerRow = data?.[0];
 			return {
 				name: sheetName,
 				data,

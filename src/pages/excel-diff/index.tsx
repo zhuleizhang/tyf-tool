@@ -41,10 +41,14 @@ interface AnalysisResult {
 	sheetName: string;
 	checkColumn: string;
 	items: {
-		row: number;
+		rowIndex: number;
+		rowData: any;
 		value: number;
 	}[];
 }
+
+const sheetNameKey = '__sheetName__';
+const rowIndexKey = '__rowIndex__';
 
 const ExcelDiff: React.FC = () => {
 	const [filePath, setFilePath] = useState<string>('');
@@ -131,46 +135,102 @@ const ExcelDiff: React.FC = () => {
 
 		const analysisResults: AnalysisResult[] = [];
 
+		const checkData: any[] = [];
+		console.log(checkData, checkColumns, groupColumn, 'checkData');
+
 		selectedSheets.forEach((sheetName) => {
 			const sheet = excelData.find((s) => s.name === sheetName);
 			if (!sheet) return;
-
-			// 支持多个检查列的分析
-			checkColumns.forEach((checkColumn) => {
-				const groups = new Map<string, { row: number; value: any }[]>();
-
-				for (let i = startRow - 1; i < sheet.data.length; i++) {
-					const row = sheet.data[i];
-					const groupValue = row[groupColumn];
-					const checkValue = row[checkColumn];
-
-					if (!groups.has(groupValue)) {
-						groups.set(groupValue, []);
-					}
-					groups.get(groupValue)?.push({
-						row: i + 1,
-						value: checkValue,
+			sheet?.data?.forEach((i, index) => {
+				if (index >= startRow - 1) {
+					checkData.push({
+						[sheetNameKey]: sheetName,
+						[rowIndexKey]: index + 1,
+						...i,
 					});
 				}
-
-				groups.forEach((items, groupName) => {
-					if (items.length > 1) {
-						const values = items.map((item) => item.value);
-						const hasDifference = values.some(
-							(v) => v !== values[0]
-						);
-						if (hasDifference) {
-							analysisResults.push({
-								sheetName,
-								groupName,
-								checkColumn, // 添加检查列信息
-								items,
-							});
-						}
-					}
-				});
 			});
 		});
+
+		checkColumns.forEach((checkColumn) => {
+			// 支持多个检查列的分析
+			const groups = new Map<
+				string,
+				{ rowIndex: number; rowData: any; value: any }[]
+			>();
+
+			for (let i = 0; i < checkData.length; i++) {
+				const row = checkData[i];
+				const groupValue = row[groupColumn];
+				// if (!groupValue) return;
+
+				if (!groups.has(groupValue)) {
+					groups.set(groupValue, []);
+				}
+				groups.get(groupValue)?.push({
+					rowIndex: row[rowIndexKey],
+					rowData: row,
+					value: row[checkColumn],
+				});
+			}
+
+			groups.forEach((items, groupName) => {
+				console.log(groupName, items, 'groups');
+				if (items.length > 1) {
+					const values = items.map((item) => item.value);
+					const hasDifference = values.some((v) => v !== values[0]);
+					if (hasDifference) {
+						analysisResults.push({
+							sheetName: items[0].rowData[sheetNameKey],
+							groupName,
+							checkColumn, // 添加检查列信息
+							items,
+						});
+					}
+				}
+			});
+		});
+
+		// selectedSheets.forEach((sheetName) => {
+		// 	const sheet = excelData.find((s) => s.name === sheetName);
+		// 	if (!sheet) return;
+
+		// 	// 支持多个检查列的分析
+		// 	checkColumns.forEach((checkColumn) => {
+		// 		const groups = new Map<string, { row: number; value: any }[]>();
+
+		// 		for (let i = startRow - 1; i < sheet.data.length; i++) {
+		// 			const row = sheet.data[i];
+		// 			const groupValue = row[groupColumn];
+		// 			const checkValue = row[checkColumn];
+
+		// 			if (!groups.has(groupValue)) {
+		// 				groups.set(groupValue, []);
+		// 			}
+		// 			groups.get(groupValue)?.push({
+		// 				row: i + 1,
+		// 				value: checkValue,
+		// 			});
+		// 		}
+
+		// 		groups.forEach((items, groupName) => {
+		// 			if (items.length > 1) {
+		// 				const values = items.map((item) => item.value);
+		// 				const hasDifference = values.some(
+		// 					(v) => v !== values[0]
+		// 				);
+		// 				if (hasDifference) {
+		// 					analysisResults.push({
+		// 						sheetName,
+		// 						groupName,
+		// 						checkColumn, // 添加检查列信息
+		// 						items,
+		// 					});
+		// 				}
+		// 			}
+		// 		});
+		// 	});
+		// });
 		console.log(analysisResults, 'analysisResults');
 
 		setResults(analysisResults);
@@ -190,8 +250,8 @@ const ExcelDiff: React.FC = () => {
 			const exportData = results.flatMap((result) =>
 				result.items.map((item) => ({
 					分组名称: result.groupName,
-					工作表名: result.sheetName,
-					行号: item.row,
+					工作表名: item.rowData[sheetNameKey],
+					行号: item.rowData[rowIndexKey],
 					检查值: item.value,
 				}))
 			);
@@ -261,14 +321,26 @@ const ExcelDiff: React.FC = () => {
 			return result.items.map((item, itemIndex) => ({
 				key: `${index}-${itemIndex}`,
 				groupName: result.groupName,
-				sheetName: result.sheetName,
+				sheetName: item?.rowData[sheetNameKey],
 				checkColumn: result.checkColumn,
-				row: item.row,
+				row: item.rowIndex,
 				value: item.value,
 				firstValue,
 			}));
 		});
 	}, [results]);
+
+	// 计算每个 sheet 的行数统计信息
+	const sheetStats = useMemo(() => {
+		if (excelData.length === 0) {
+			return [];
+		}
+
+		return excelData.map((sheet) => ({
+			name: sheet.name,
+			totalRows: sheet.data.length,
+		}));
+	}, [excelData]);
 
 	return (
 		<Spin spinning={loading} tip="处理中...">
@@ -297,15 +369,50 @@ const ExcelDiff: React.FC = () => {
 				]}
 			>
 				{filePath ? (
-					<Paragraph
-						ellipsis={{
-							rows: 1,
-							expandable: true,
-							symbol: '查看完整路径',
-						}}
+					<Space
+						direction="vertical"
+						size="middle"
+						style={{ width: '100%' }}
 					>
-						当前文件: {filePath}
-					</Paragraph>
+						<Paragraph
+							style={{ marginBottom: '0' }}
+							ellipsis={{
+								rows: 1,
+								expandable: true,
+								symbol: '查看完整路径',
+							}}
+						>
+							当前文件: {filePath}
+						</Paragraph>
+
+						{/* Sheet 统计信息 */}
+						{sheetStats.length > 0 && (
+							<div
+								style={{
+									padding: '12px',
+									background: '#f5f5f5',
+									borderRadius: '6px',
+								}}
+							>
+								<div
+									style={{
+										marginBottom: '8px',
+										fontWeight: 'bold',
+										color: '#666',
+									}}
+								>
+									工作表统计信息:
+								</div>
+								<Space wrap>
+									{sheetStats.map((stat) => (
+										<Tag key={stat.name} color="blue">
+											{stat.name}: {stat.totalRows} 行
+										</Tag>
+									))}
+								</Space>
+							</div>
+						)}
+					</Space>
 				) : (
 					<Alert
 						message="请选择Excel文件进行分析"
