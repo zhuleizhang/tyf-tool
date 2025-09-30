@@ -11,9 +11,15 @@ import os
 import shutil
 import sys
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 import requests
 from openpyxl import load_workbook
+import numpy as np
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+    print("警告: OpenCV未安装，将使用基础图像处理方法")
 
 # macOS环境变量配置 - 设置zbar库路径
 def setup_macos_environment():
@@ -64,8 +70,18 @@ def check_dependencies():
     deps_to_check = [
         ('PIL', 'Pillow'),
         ('openpyxl', 'openpyxl'),
-        ('requests', 'requests')
+        ('requests', 'requests'),
+        ('numpy', 'numpy')
     ]
+    
+    # 检查可选依赖OpenCV
+    try:
+        import cv2
+        version = getattr(cv2, '__version__', '未知版本')
+        version_info.append(f"opencv-python: {version}")
+        print("✓ OpenCV库导入成功（用于高级图像处理）")
+    except ImportError:
+        print("⚠ OpenCV库未安装（可选，用于高级图像处理）")
     
     for module_name, package_name in deps_to_check:
         try:
@@ -103,7 +119,8 @@ def check_dependencies():
             print("   CentOS/RHEL: sudo yum install zbar")
         
         print("\n2. 安装Python依赖:")
-        print("   pip install pyzbar openpyxl pillow requests")
+        print("   pip install pyzbar openpyxl pillow requests numpy")
+        print("   pip install opencv-python  # 可选，用于高级图像处理")
         
         print("\n3. 如果仍有问题，请尝试:")
         print("   pip install --upgrade pyzbar")
@@ -161,7 +178,8 @@ def parse_args():
 
 def decode_barcode_from_image(image_data):
     """
-    从图片数据中识别条码
+    从图片数据中识别条码 - 增强版本
+    针对圆柱体饮料条码等弯曲变形条码进行优化
     
     Args:
         image_data: 图片的二进制数据
@@ -171,24 +189,133 @@ def decode_barcode_from_image(image_data):
     """
     try:
         # 将二进制数据转换为PIL图像对象
-        image = Image.open(BytesIO(image_data))
+        original_image = Image.open(BytesIO(image_data))
         
         # 转换为RGB格式（确保兼容性）
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
+        if original_image.mode != 'RGB':
+            original_image = original_image.convert('RGB')
         
-        # 使用pyzbar识别条码
-        barcodes = pyzbar.decode(image)
+        print(f"    尝试识别条码，原图尺寸: {original_image.size}")
         
-        # 返回第一个识别到的条码
+        # 策略1: 直接识别原图
+        barcodes = pyzbar.decode(original_image)
         if barcodes:
             barcode = barcodes[0]
+            print(f"    ✓ 原图识别成功: {barcode.data.decode('utf-8')}")
             return barcode.data.decode('utf-8'), barcode.type
-        else:
-            return None, None
+        
+        # 策略2: 基础图像预处理
+        processed_images = []
+        
+        # 2.1 灰度化处理
+        gray_image = original_image.convert('L')
+        processed_images.append(("灰度化", gray_image))
+        
+        # 2.2 对比度增强
+        enhancer = ImageEnhance.Contrast(original_image)
+        contrast_image = enhancer.enhance(2.0)  # 增强对比度
+        processed_images.append(("对比度增强", contrast_image))
+        
+        # 2.3 锐化处理
+        sharp_image = original_image.filter(ImageFilter.SHARPEN)
+        processed_images.append(("锐化处理", sharp_image))
+        
+        # 2.4 高斯模糊去噪
+        blur_image = original_image.filter(ImageFilter.GaussianBlur(radius=0.5))
+        processed_images.append(("高斯模糊", blur_image))
+        
+        # 2.5 亮度调整
+        brightness_enhancer = ImageEnhance.Brightness(original_image)
+        bright_image = brightness_enhancer.enhance(1.2)
+        processed_images.append(("亮度增强", bright_image))
+        
+        # 尝试识别预处理后的图像
+        for method_name, processed_image in processed_images:
+            barcodes = pyzbar.decode(processed_image)
+            if barcodes:
+                barcode = barcodes[0]
+                print(f"    ✓ {method_name}识别成功: {barcode.data.decode('utf-8')}")
+                return barcode.data.decode('utf-8'), barcode.type
+        
+        # 策略3: 多角度旋转识别
+        print("    尝试多角度旋转识别...")
+        for angle in range(-10, 11, 2):  # -10度到+10度，步长2度
+            if angle == 0:  # 0度已经在原图中尝试过了
+                continue
+            
+            rotated_image = original_image.rotate(angle, expand=True)
+            barcodes = pyzbar.decode(rotated_image)
+            if barcodes:
+                barcode = barcodes[0]
+                print(f"    ✓ 旋转{angle}度识别成功: {barcode.data.decode('utf-8')}")
+                return barcode.data.decode('utf-8'), barcode.type
+        
+        # 策略4: 缩放识别
+        print("    尝试缩放识别...")
+        for scale in [0.8, 1.2, 1.5]:  # 不同缩放比例
+            width, height = original_image.size
+            new_size = (int(width * scale), int(height * scale))
+            scaled_image = original_image.resize(new_size, Image.Resampling.LANCZOS)
+            
+            barcodes = pyzbar.decode(scaled_image)
+            if barcodes:
+                barcode = barcodes[0]
+                print(f"    ✓ 缩放{scale}x识别成功: {barcode.data.decode('utf-8')}")
+                return barcode.data.decode('utf-8'), barcode.type
+        
+        # 策略5: 裁剪中心区域识别
+        print("    尝试裁剪中心区域识别...")
+        width, height = original_image.size
+        # 裁剪中心80%的区域
+        crop_margin_w = int(width * 0.1)
+        crop_margin_h = int(height * 0.1)
+        cropped_image = original_image.crop((
+            crop_margin_w, crop_margin_h, 
+            width - crop_margin_w, height - crop_margin_h
+        ))
+        
+        barcodes = pyzbar.decode(cropped_image)
+        if barcodes:
+            barcode = barcodes[0]
+            print(f"    ✓ 裁剪中心区域识别成功: {barcode.data.decode('utf-8')}")
+            return barcode.data.decode('utf-8'), barcode.type
+        
+        # 策略6: 使用OpenCV进行高级处理（如果可用）
+        if cv2 is not None:
+            print("    尝试OpenCV高级处理...")
+            # 转换为OpenCV格式
+            cv_image = cv2.cvtColor(np.array(original_image), cv2.COLOR_RGB2BGR)
+            
+            # 6.1 自适应二值化
+            gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+            adaptive_thresh = cv2.adaptiveThreshold(
+                gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+            )
+            adaptive_image = Image.fromarray(adaptive_thresh)
+            
+            barcodes = pyzbar.decode(adaptive_image)
+            if barcodes:
+                barcode = barcodes[0]
+                print(f"    ✓ 自适应二值化识别成功: {barcode.data.decode('utf-8')}")
+                return barcode.data.decode('utf-8'), barcode.type
+            
+            # 6.2 形态学操作
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            morph_image = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+            morph_pil = Image.fromarray(morph_image)
+            
+            barcodes = pyzbar.decode(morph_pil)
+            if barcodes:
+                barcode = barcodes[0]
+                print(f"    ✓ 形态学处理识别成功: {barcode.data.decode('utf-8')}")
+                return barcode.data.decode('utf-8'), barcode.type
+        
+        # 所有策略都失败
+        print("    ✗ 所有识别策略均失败")
+        return None, None
             
     except Exception as e:
-        print(f"条码识别错误: {e}")
+        print(f"    条码识别错误: {e}")
         return None, None
 
 def query_product_info_tianapi(barcode, tianapi_key):
@@ -322,7 +449,6 @@ def main():
                 # 获取图片数据
                 img = source_sheet._images[idx]
                 img_data = img._data()
-                
                 # 识别条码
                 barcode_data, barcode_type = decode_barcode_from_image(img_data)
                 
