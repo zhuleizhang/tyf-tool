@@ -177,9 +177,9 @@ jobs:
           where python
           # 检查依赖是否正确安装
           pip list | findstr -i "pyinstaller requests pillow"
-          # 检查图标文件是否存在（使用英文避免编码问题）
-          if exist ..\src\assets\HeartGuardian.png (echo "Icon file exists") else (echo "Warning: Icon file does not exist, default icon will be used")
-          if exist ..\src\assets\logo.ico (echo "Backup ico icon exists") else (echo "Backup ico icon does not exist")
+          # 检查图标文件是否存在（使用PowerShell兼容语法）
+          if (Test-Path "..\src\assets\HeartGuardian.png") { echo "Icon file exists" } else { echo "Warning: Icon file does not exist, default icon will be used" }
+          if (Test-Path "..\src\assets\logo.ico") { echo "Backup ico icon exists" } else { echo "Backup ico icon does not exist" }
 
       - name: 构建Windows版本
         run: |
