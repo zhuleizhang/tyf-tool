@@ -65,7 +65,7 @@ jobs:
       - name: 安装依赖
         run: |
           # 安装打包所需的依赖
-          pip install pyinstaller
+          pip install pyinstaller requests
 
       - name: 构建Mac Intel版本
         run: |
@@ -104,7 +104,7 @@ jobs:
       - name: 安装依赖
         run: |
           # 安装打包所需的依赖
-          pip install pyinstaller
+          pip install pyinstaller requests
 
       - name: 构建Mac ARM版本
         run: |
@@ -137,7 +137,7 @@ jobs:
       - name: 安装依赖
         run: |
           # 安装打包所需的依赖和tkinter支持
-          pip install pyinstaller
+          pip install pyinstaller requests
 
       - name: 构建Windows版本
         run: |
