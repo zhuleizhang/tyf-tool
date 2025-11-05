@@ -5,6 +5,7 @@ on:
     branches: [main, master]
     paths:
       - "scripts/HeartGuardian.py" # 仅当HeartGuardian.py有变更时触发
+      - ".github/workflows/build-heart-guardian.yml" # 仅当build-heart-guardian.yml有变更时触发
   # pull_request:
   #   branches: [main, master]
   #   paths:
