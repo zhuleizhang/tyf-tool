@@ -68,7 +68,7 @@ jobs:
           # 安装打包所需的依赖
           pip install pyinstaller requests pillow
           # 确保安装了tkinter（在某些环境中可能需要单独安装）
-          python -c "import tkinter; print('tkinter已安装')" || echo "警告: tkinter可能未正确安装，这可能导致构建后的应用无法正常显示UI"
+          python -c "import tkinter; print('tkinter is installed')" || echo "Warning: tkinter might not be properly installed, which may cause UI display issues"
 
       - name: 构建前环境检查
         run: |
@@ -78,8 +78,8 @@ jobs:
           # 检查依赖是否正确安装
           pip list | grep -E 'pyinstaller|requests|pillow'
           # 检查图标文件是否存在
-          test -f src/assets/HeartGuardian.png && echo "图标文件存在" || echo "警告: 图标文件不存在，将使用默认图标"
-          test -f src/assets/logo.icns && echo "备用icns图标存在" || echo "备用icns图标不存在"
+          test -f src/assets/HeartGuardian.png && echo "Icon file exists" || echo "Warning: Icon file does not exist, default icon will be used"
+          test -f src/assets/logo.icns && echo "Backup icns icon exists" || echo "Backup icns icon does not exist"
 
       - name: 构建Mac Intel版本
         run: |
@@ -130,8 +130,8 @@ jobs:
           # 检查依赖是否正确安装
           pip list | grep -E 'pyinstaller|requests|pillow'
           # 检查图标文件是否存在
-          test -f src/assets/HeartGuardian.png && echo "图标文件存在" || echo "警告: 图标文件不存在，将使用默认图标"
-          test -f src/assets/logo.icns && echo "备用icns图标存在" || echo "备用icns图标不存在"
+          test -f src/assets/HeartGuardian.png && echo "Icon file exists" || echo "Warning: Icon file does not exist, default icon will be used"
+          test -f src/assets/logo.icns && echo "Backup icns icon exists" || echo "Backup icns icon does not exist"
 
       - name: 构建Mac ARM版本
         run: |
@@ -167,8 +167,8 @@ jobs:
         run: |
           # 安装打包所需的依赖和tkinter支持
           pip install pyinstaller requests pillow
-          # Windows通常默认安装tkinter，但进行检查确保
-          python -c "import tkinter; print('tkinter已安装')" || echo "警告: tkinter可能未正确安装，这可能导致构建后的应用无法正常显示UI"
+          # Windows通常默认安装tkinter，但进行检查确保（使用英文避免编码问题）
+          python -c "import tkinter; print('tkinter is installed')" || echo "Warning: tkinter might not be properly installed, which may cause UI display issues"
 
       - name: 构建前环境检查
         run: |
@@ -177,9 +177,9 @@ jobs:
           where python
           # 检查依赖是否正确安装
           pip list | findstr -i "pyinstaller requests pillow"
-          # 检查图标文件是否存在
-          if exist ..\src\assets\HeartGuardian.png (echo "图标文件存在") else (echo "警告: 图标文件不存在，将使用默认图标")
-          if exist ..\src\assets\logo.ico (echo "备用ico图标存在") else (echo "备用ico图标不存在")
+          # 检查图标文件是否存在（使用英文避免编码问题）
+          if exist ..\src\assets\HeartGuardian.png (echo "Icon file exists") else (echo "Warning: Icon file does not exist, default icon will be used")
+          if exist ..\src\assets\logo.ico (echo "Backup ico icon exists") else (echo "Backup ico icon does not exist")
 
       - name: 构建Windows版本
         run: |
