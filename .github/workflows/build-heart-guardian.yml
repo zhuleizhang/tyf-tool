@@ -66,13 +66,28 @@ jobs:
       - name: 安装依赖
         run: |
           # 安装打包所需的依赖
-          pip install pyinstaller requests
+          pip install pyinstaller requests pillow
+          # 确保安装了tkinter（在某些环境中可能需要单独安装）
+          python -c "import tkinter; print('tkinter已安装')" || echo "警告: tkinter可能未正确安装，这可能导致构建后的应用无法正常显示UI"
+
+      - name: 构建前环境检查
+        run: |
+          # 检查Python版本和路径
+          python --version
+          which python
+          # 检查依赖是否正确安装
+          pip list | grep -E 'pyinstaller|requests|pillow'
+          # 检查图标文件是否存在
+          test -f src/assets/HeartGuardian.png && echo "图标文件存在" || echo "警告: 图标文件不存在，将使用默认图标"
+          test -f src/assets/logo.icns && echo "备用icns图标存在" || echo "备用icns图标不存在"
 
       - name: 构建Mac Intel版本
         run: |
           # 直接打包HeartGuardian.py脚本并指定PNG图标
           cd scripts
-          PYTHONHASHSEED=1 pyinstaller --onefile --windowed --name HeartGuardian --icon ../src/assets/HeartGuardian.png HeartGuardian.py
+          # 尝试使用PNG图标，如果失败则尝试使用icns图标作为备选
+          PYTHONHASHSEED=1 pyinstaller --onefile --windowed --name HeartGuardian --icon ../src/assets/HeartGuardian.png HeartGuardian.py || \
+          PYTHONHASHSEED=1 pyinstaller --onefile --windowed --name HeartGuardian --icon ../src/assets/logo.icns HeartGuardian.py
           mkdir -p ../dist/mac-intel
           cp -f dist/HeartGuardian ../dist/mac-intel/
 
@@ -105,13 +120,26 @@ jobs:
       - name: 安装依赖
         run: |
           # 安装打包所需的依赖
-          pip install pyinstaller requests
+          pip install pyinstaller requests pillow
+
+      - name: 构建前环境检查
+        run: |
+          # 检查Python版本和路径
+          python --version
+          which python
+          # 检查依赖是否正确安装
+          pip list | grep -E 'pyinstaller|requests|pillow'
+          # 检查图标文件是否存在
+          test -f src/assets/HeartGuardian.png && echo "图标文件存在" || echo "警告: 图标文件不存在，将使用默认图标"
+          test -f src/assets/logo.icns && echo "备用icns图标存在" || echo "备用icns图标不存在"
 
       - name: 构建Mac ARM版本
         run: |
           # 直接打包HeartGuardian.py脚本并指定PNG图标
           cd scripts
-          PYTHONHASHSEED=1 pyinstaller --onefile --windowed --name HeartGuardian --icon ../src/assets/HeartGuardian.png HeartGuardian.py
+          # 尝试使用PNG图标，如果失败则尝试使用icns图标作为备选
+          PYTHONHASHSEED=1 pyinstaller --onefile --windowed --name HeartGuardian --icon ../src/assets/HeartGuardian.png HeartGuardian.py || \
+          PYTHONHASHSEED=1 pyinstaller --onefile --windowed --name HeartGuardian --icon ../src/assets/logo.icns HeartGuardian.py
           mkdir -p ../dist/mac-arm
           cp -f dist/HeartGuardian ../dist/mac-arm/
 
@@ -138,13 +166,28 @@ jobs:
       - name: 安装依赖
         run: |
           # 安装打包所需的依赖和tkinter支持
-          pip install pyinstaller requests
+          pip install pyinstaller requests pillow
+          # Windows通常默认安装tkinter，但进行检查确保
+          python -c "import tkinter; print('tkinter已安装')" || echo "警告: tkinter可能未正确安装，这可能导致构建后的应用无法正常显示UI"
+
+      - name: 构建前环境检查
+        run: |
+          # 检查Python版本和路径
+          python --version
+          where python
+          # 检查依赖是否正确安装
+          pip list | findstr -i "pyinstaller requests pillow"
+          # 检查图标文件是否存在
+          if exist ..\src\assets\HeartGuardian.png (echo "图标文件存在") else (echo "警告: 图标文件不存在，将使用默认图标")
+          if exist ..\src\assets\logo.ico (echo "备用ico图标存在") else (echo "备用ico图标不存在")
 
       - name: 构建Windows版本
         run: |
           # 直接打包HeartGuardian.py脚本并指定PNG图标
           cd scripts
-          set PYTHONHASHSEED=1 && pyinstaller --onefile --windowed --name HeartGuardian --icon ..\src\assets\HeartGuardian.png HeartGuardian.py
+          # 尝试使用PNG图标，如果失败则尝试使用ico图标作为备选
+          set PYTHONHASHSEED=1 && pyinstaller --onefile --windowed --name HeartGuardian --icon ..\src\assets\HeartGuardian.png HeartGuardian.py || \
+          set PYTHONHASHSEED=1 && pyinstaller --onefile --windowed --name HeartGuardian --icon ..\src\assets\logo.ico HeartGuardian.py
           mkdir -p ../dist/windows
           copy dist\HeartGuardian.exe ..\dist\windows\
 
